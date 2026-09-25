@@ -1,5 +1,30 @@
 # Returns Manager build log
 
+## 2026-09-26 - Phase 1 headless foundation
+
+Started from committed planning baseline `680f2be` with a clean working tree. Re-read the requested planning/repository/data/guard files. All implementation is inside `submissions/karthikk-2003/`; build-brief.md, root files, CSV and repository protection files were not modified.
+
+Implemented a standard-library Python package with immutable internal domain types, strict synthetic CSV validation, exact source/raw-field lineage, unavailable observation/image placeholders, four separate deterministic result layers, tenant-bound SQLite persistence and a local CLI. Added the participant-local ignore file and synthetic engineering tests; updated this log and the participant README with actual setup/run/test instructions.
+
+The adapter retains all 24 unit IDs, both supplied org IDs, record/order/product identifiers, operator/timestamp, image references and historical source values. Missing client context remains null. No client IDs, confidence, grades, observations, image evidence or policy mappings were invented. Missing evidence/reference/policy produces UNCERTAIN and pending_review. Historical annotations are lineage only. Explicit component quantities are parsed without guessing quantities for unqualified entries.
+
+Persistence checks organization and client scope on writes and every public lookup, including evidence-reference access. Identical scoped input is idempotent; conflicting lineage cannot overwrite it. Captures commit before assessment; an injected processing timeout leaves a recoverable pending record and error type. Exact retries resume unfinished processing. CLI output is internal JSON, not the official wire contract. This is a trusted local operator tool, not a deployed authentication or image-serving service.
+
+Files created: participant `.gitignore`; `agent/returns_manager/__init__.py`, `__main__.py`, `domain.py`, `validation.py`, `rules.py`, `storage.py`, `service.py`; `tests/test_foundation.py`. Files modified: participant README.md and build-log.md. Test fixtures are clearly labelled in the test module; no fake image files or evaluation artifacts were created.
+
+Verification command (from the participant directory): `python -B -m unittest discover -s tests -v`, Python 3.13.4.
+
+- Initial sandboxed execution: 33 setup errors because the shell sandbox denied temporary-directory creation; no test assertions ran.
+- Execution with permission for participant-local test writes: initial 33 tests passed.
+- Expanded suite: 35 tests, two Windows cleanup errors from unclosed direct SQLite connections in the tests. Fixed those test connections with contextlib.closing.
+- Final complete run: **Ran 35 tests in 0.998s; OK. 35 passed, 0 failures, 0 errors.** The duration is unittest runner output, not agent inference latency.
+
+Coverage includes all 24 records persisted and isolated in both directions; all 72 image references unavailable; preserved lineage; required identifiers and UTC timestamps; malformed CSV/components; missing references/client context; rejected dispositions; guessed record/unit/evidence and SQL-like lookups; same IDs in different tenants; idempotency/conflicts; immutable result checks; injected timeout/retry; selected-organization CLI import and rejection of database paths outside the participant directory.
+
+Final boundary check: nine new files and two modified files, all within the participant directory. All other tracked files match HEAD (allowing checkout line-ending normalization), the index is unchanged and git diff --check found no whitespace errors. Removed the two temporary test directories left by the earlier cleanup errors; no test databases remain.
+
+Unresolved for later phases: exact official wire schema and hash semantics; authoritative marketplace/category condition rules; approved disposition policy; actual authenticated client context; real image/catalogue evidence. No visual evaluation was run. The earlier 50-unit plan remains a methodology only. No Phase 2, UI, vision integration, deployment, commit, staging or push was performed. Stop at Phase 1.
+
 ## 2026-09-26 - Repository reconnaissance and architecture planning
 
 Status: documentation only; application implementation has not started.
