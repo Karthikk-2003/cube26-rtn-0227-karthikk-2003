@@ -1,5 +1,43 @@
 # Returns Manager build log
 
+## 2026-09-26 - Fix the two Phase 2 P2 audit findings
+
+Changed only observations.py, tests/test_vision.py, this log and the participant README. Strict UTF-8 scalar validation now rejects lone surrogates in raw responses, decoded observation text and textual metadata, without sanitizing values. Latency validation converts numeric-conversion OverflowError into ValidationError rather than letting it escape. Existing orchestration turns these rejected responses into explicit unavailable runs, persisted failure attempts and pending_review outcomes; it does not invent replacement observations or telemetry.
+
+Added four focused tests: test_invalid_unicode_identity_persists_only_safe_failure (escaped/literal high and low surrogates); test_invalid_unicode_provider_metadata_is_rejected; test_valid_unicode_round_trips_without_sanitizing (literal/escaped valid Unicode); test_oversized_latency_persists_safe_unavailable_state. Existing tests were not weakened or removed.
+
+Complete suite: `python -B -m unittest discover -s tests -q` on Python 3.13.4 -> **Ran 96 tests in 1.666s; OK. Passed 96, failed 0, errors 0.** This is the existing 92 tests plus four regressions; the duration is a test-runner duration, not provider latency.
+
+No architecture redesign, Phase 3 work, dependency changes, cache changes, commit or push. All edits remain inside submissions/karthikk-2003/. The pre-existing Phase 2 changes remain uncommitted; existing real-provider/evidence/policy dependencies are unchanged.
+
+## 2026-09-26 - Phase 2 vision observation layer
+
+Started from `526ae19` (`feat: implement returns manager foundation`) with a clean working tree. Read the supplied Phase 2 request and existing brief/log/README/domain/rules/service/storage/validation/tests. The request's test path under `agent/returns_manager/tests/` does not exist; used the actual participant `tests/test_foundation.py`. Baseline command `python -B -m unittest discover -s tests -v`: **35 tests passed, 0 failures, 0 errors** before changes.
+
+Implemented only the observation layer:
+
+- New observations.py defines structured identity/component/condition findings, explicit uncertainty, image descriptors, raw provider envelope, strict parser/validator and conflict flags. It checks organization/client/unit/record association, provided evidence IDs, values/types, quantity visibility, coverage-based absence assertions and scoped negative findings. No condition scale or disposition policy was introduced.
+- New vision.py defines the replaceable VisionProvider protocol, batched request, explicitly synthetic FixtureProvider, optional genuine PNG/JPEG byte validation and failure-safe orchestration. No real provider is configured or called. Fixture telemetry stays null. No generated photos, inferred OCR or fabricated coordinates were created.
+- Small integration changes allow validated observations into the existing deterministic rules. Business results remain UNCERTAIN/pending_review with no grade. Original capture lineage and Phase 1 assessment behavior are retained.
+- SQLite receives an additive vision_attempts table. Valid raw responses, normalized observations and assessments are stored separately per scoped capture. Invalid/foreign raw responses are not retained; errors remain explicit. Repeated explicit observation calls append attempts. Stored normalized results cannot bypass raw-response lineage through the Phase 1 assessment API.
+- Added requirements-images.txt for optional Pillow 12.3.0 image validation and tests/test_vision.py containing clearly labelled synthetic JSON/metadata cases. Existing foundation tests and CSV were not edited. README documents the API, provider responsibilities, schema limits, failures, isolation, optional decoder and unimplemented dependencies.
+
+Tests executed:
+
+1. Baseline: 35/35 passed before modifications.
+2. Initial full suite: 89/89 passed (35 Phase 1 + 54 Phase 2).
+3. Boundary review added positive/negative identity conflict detection, explicit unconfigured-provider provenance and a guard requiring raw-response lineage for persisted vision assessments, with three additional tests.
+4. Final system Python 3.13.4 run, no Pillow: `python -B -m unittest discover -s tests -q` -> **Ran 92 tests in 1.385s; OK. Passed 92, failed 0, errors 0.**
+5. Final bundled Python run with Pillow 12.3.0: same unittest discovery command -> **Ran 92 tests in 1.517s; OK. Passed 92, failed 0, errors 0.** This also executes the corrupt/truncated image decoder path. No genuine product image or real multimodal inference was tested. Timings are test-runner durations, not provider latency or model performance.
+
+Coverage includes valid/invalid/empty raw responses, duplicate JSON keys, provider failures/timeouts, unknown/ambiguous/conflicting identity, supplied OCR fields, component visibility/quantity/absence validation, multiple components/images/citations, scratches/damage/scoped negative findings, blur/glare/occlusion limitations, invalid evidence IDs, cross-organization/unit/record rejection, raw/normalized consistency, review routing, append-only attempts and Phase 1 database compatibility. No visual evaluation or model-accuracy measurement occurred.
+
+Files created: agent/returns_manager/observations.py, agent/returns_manager/vision.py, requirements-images.txt, tests/test_vision.py. Files modified: agent/returns_manager/domain.py, rules.py, service.py, storage.py, participant README.md and build-log.md. Final git status and content checks confirmed four created/six modified files, all inside submissions/karthikk-2003/; all other tracked files match HEAD, the index is unchanged, git diff --check passes and the temporary test directory is empty.
+
+Unresolved: real provider adapter/configuration and genuine returned-item/catalogue evidence; authenticated organization/client and image ownership resolution; authoritative condition/category definitions; disposition policy; official wire schema/hash procedure; durable image byte storage. Provider adapters must enforce transport timeouts. Parser/fixture tests validate engineering contracts, not the truth of visual observations. Optional image decoding is an input-integrity check, not vision inference.
+
+Stopped after Phase 2. No UI, full review workflow, final business policy, evaluation, deployment, hosting, demo/submission work, commit or push.
+
 ## 2026-09-26 - Phase 1 headless foundation
 
 Started from committed planning baseline `680f2be` with a clean working tree. Re-read the requested planning/repository/data/guard files. All implementation is inside `submissions/karthikk-2003/`; build-brief.md, root files, CSV and repository protection files were not modified.

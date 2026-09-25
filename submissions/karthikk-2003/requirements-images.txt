@@ -1,0 +1,2 @@
+# Optional genuine PNG/JPEG validation only; fixture tests need no dependencies.
+Pillow==12.3.0

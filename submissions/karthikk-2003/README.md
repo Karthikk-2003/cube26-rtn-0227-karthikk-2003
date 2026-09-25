@@ -2,7 +2,7 @@
 
 Participant: Karthik Karunakaran (@Karthikk-2003, supplied handoff).
 
-Status: Phase 1 headless foundation implemented. It validates and preserves synthetic CSV captures, isolates persisted records by tenant, and produces conservative review results. No vision inference, UI, authoritative grading/disposition policy, official wire-contract implementation or deployment exists.
+Status: Phase 1 foundation and Phase 2 observation layer implemented. Phase 2 adds a provider interface, explicitly synthetic fixture provider, validated structured observations and scoped observation-attempt persistence. No real multimodal API call, UI, authoritative grading/disposition policy, official wire-contract implementation or deployment exists.
 
 This index is adapted from [submissions/_TEMPLATE/README.md](../_TEMPLATE/README.md), which requests a participant README. Current [RULES](../../RULES.md) and [GitHub guide](../../GITHUB-GUIDE.md) instead describe an own-fork workflow without requiring participant folders or organiser PRs. This directory follows the user's requested boundary and is compatible with the retained guard's path rule; it does not imply a PR is required.
 
@@ -20,11 +20,15 @@ This index is adapted from [submissions/_TEMPLATE/README.md](../_TEMPLATE/README
 - `agent/returns_manager/service.py`: persist capture before assessment, preserve failures, resume unfinished ingestion and reject conflicting duplicates.
 - `agent/returns_manager/__main__.py` and `__init__.py`: local CLI and package entry.
 - `tests/test_foundation.py`: explicitly synthetic engineering tests; no image generation or model output fixtures.
+- `agent/returns_manager/observations.py`: observation dataclasses, strict raw JSON parser, evidence/scope validation and conflict detection.
+- `agent/returns_manager/vision.py`: image-input boundary, provider protocol, fixture replay provider and failure-safe observation pipeline.
+- `tests/test_vision.py`: synthetic observation/metadata fixtures, provider failures, isolation and integration tests.
+- `requirements-images.txt`: optional Pillow dependency for validation of genuine image bytes; not needed for fixture tests or the Phase 1 CLI.
 - `.gitignore`: excludes local runtime databases and temporary test directories within this directory.
 
 ## Setup, run and test
 
-Requires Python 3.10+ with standard-library SQLite; tested here with Python 3.13.4. No pip dependencies, API keys or network access are needed. Run the following PowerShell commands from this participant directory:
+Requires Python 3.10+ with standard-library SQLite; tested here with Python 3.13.4. The existing CSV CLI and fixture tests require no pip dependencies, API keys or network access. Run the following PowerShell commands from this participant directory:
 
 ```powershell
 $env:PYTHONPATH = Join-Path (Get-Location) 'agent'
@@ -43,7 +47,7 @@ All current input goes through an explicitly **synthetic CSV fixture adapter**. 
 
 The adapter requires exactly the documented CSV columns and valid nonempty identifiers/UTC timestamps. It rejects wrong tenant context, malformed rows, duplicate/invalid components, unsupported historical dispositions and inconsistent missing-part lists. Empty parts/photo lists are retained with review blockers. Explicit `xN` quantities are parsed; unspecified quantities stay unknown. The sample's parts list is unverified reference context, not an authoritative catalogue.
 
-Every photo reference remains **unavailable**. Input paths and URLs are never opened, fetched or served, even if a file happens to exist. There is no observation beyond an unavailable placeholder. Identity, completeness and condition are separate UNCERTAIN results with null confidence, no supporting image evidence, no assigned grade and no fabricated missing-component claims. Disposition is `pending_review`, with explicit blockers. Future decisive checks require a new implementation phase and validated evidence/policies.
+The CSV adapter still marks every photo reference **unavailable**. Input paths and URLs are never opened, fetched or served, even if a file happens to exist. The Phase 1 CLI retains its unavailable observation placeholder. The separate Phase 2 library API accepts explicitly supplied image inputs and returns either validated observations or an explicit unavailable state. Identity, completeness and condition remain separate UNCERTAIN business results with null confidence, no assigned grade and no fabricated missing-component claims. Disposition remains `pending_review`. Future decisive checks require validated evidence/policies and a subsequent implementation phase.
 
 SQLite lookups require a Store bound to an explicit trusted TenantContext and include organization and client scope in every query. Missing client_id remains JSON null and is an exact scope, not a wildcard or generated identifier. `--client` is only for a real trusted client context if one becomes available; the supplied data has none. No client IDs are invented in the implementation or tests. Actual client-level authorization remains unverified until real context is supplied.
 
@@ -53,9 +57,53 @@ Repeated ingestion of identical scoped record ID and full lineage returns the st
 
 The JSON output is labelled `internal_only_not_official_wire_contract`; it is not a Recovery Manager interoperability claim. Exact official schema, condition rules and disposition policy remain unresolved. See the build brief for details.
 
+## Phase 2 observation layer
+
+Flow: capture-bound image inputs -> VisionProvider -> raw ProviderResponse -> strict parser/validator -> ObservationBatch -> existing deterministic rules -> stored observation attempt and review outcome. The raw provider response is separate from normalized observations and business results. There is no direct vision-to-disposition or vision-to-condition-grade path.
+
+The public integration entry is `service.inspect_capture(row, source, store, images, provider=None)`. It validates the row against the Store's trusted tenant context and preserves the capture before processing. `images` is a tuple of `vision.ImageInput` values bound to the capture's organization/client, unit_id and record_id through `ObservationScope.from_capture(capture)`. Callers supply image_id, evidence_id, capture photo reference, image role and source kind. IDs are not generated from model assertions. Each reference must already belong to that capture. Returned-product and returned-packaging image roles are supported; the validated relationship is `capture_photo_ref`.
+
+`VisionProvider.observe(VisionRequest)` receives one batch containing image descriptors, any validated image bytes and expected component names. It does not receive CSV identity/disposition/condition history. It must return a ProviderResponse containing raw JSON plus actual provider metadata where available. No real adapter is configured or implemented. A future real adapter must enforce its own network timeout, translate its response into the internal observation JSON contract, keep image contents as data rather than instructions, and provide real metadata or null. No API credentials are required or used in this implementation.
+
+`FixtureProvider(response_text)` replays **explicitly supplied synthetic test JSON**, with provider name `fixture-json` and mode `fixture`. It performs no inference, cannot claim model/request/token/latency metadata, and only accepts metadata inputs labelled `kind="fixture"`. Such evidence is `fixture_only`, never a claim that genuine images were inspected. Test assertions and fixture IDs in `tests/test_vision.py` are not product evidence or model outputs. No fake image files were created.
+
+For genuine inputs, callers must supply actual bytes (`kind="genuine"`); this layer does not fetch arbitrary paths/URLs. Missing bytes, non-images and corrupt/unreadable images stop the batch before a provider call. A genuine PNG/JPEG decoder is optional:
+
+```powershell
+# Optional, only when genuine image-byte validation is needed:
+python -m pip install --target ./runtime/image-deps -r requirements-images.txt
+$env:PYTHONPATH = (Join-Path (Get-Location) 'agent') + [IO.Path]::PathSeparator + (Join-Path (Get-Location) 'runtime/image-deps')
+```
+
+The loader uses [Pillow image verification and loading](https://pillow.readthedocs.io/en/stable/reference/Image.html), with limits of 20 images, 10 MB per image, 20 million pixels per image and single-frame PNG/JPEG only. These are implementation limits, not challenge requirements. Decoded content receives its actual SHA-256; unavailable/fixture content does not receive a fabricated digest. With Pillow absent, potentially supported bytes return `image_decoder_unavailable`. No genuine product image or successful real-provider call was tested in this phase. Image byte content remains transient; durable image storage and authenticated upload resolution are still extension points.
+
+### Internal normalized observations
+
+The internal provider JSON requires `scope`, `identity`, `components`, `condition` and `limitations`. The scope uses the existing tenant/unit/record identities, not another identity system. See dataclasses and validation in observations.py for exact field names. Unknown fields, duplicate JSON keys, nonfinite JSON values, wrong types, missing fields, unsupported values and unresolved evidence IDs are rejected. Raw text is bounded to 1,000,000 characters, text fields to 8,192 characters and lists to 200 items. No official wire schema is asserted.
+
+- Identity: brand, model, SKU, ASIN, model number, product name, markings, packaging identifiers, physical characteristics and provider-supplied OCR text. States distinguish observed, not_observed, not_visible, unknown and conflicting; values are never filled from catalogue/history.
+- Components: component name, present/absent/unknown/conflicting assertion, visibility, optional reliable visible quantity, citations and limitations. Unknown, occluded or partial evidence cannot support a reliable exact count. An absence assertion requires visible coverage, quantity zero, `full_expected_area_visible`, citations and a coverage explanation. This records the provider's assertion and rationale; it does not independently prove physical absence or produce a business missing-parts verdict.
+- Condition: visible scratches/scuffs/cracks/dents/deformation/stains/tears/wear/discoloration/broken parts/packaging damage/signs of use/surface condition, with observation state, provider description, evidence and limitations. No condition-grade enumeration or damage-to-grade mapping is introduced. A negative finding describes the inspected visible scope, not an unseen whole product.
+- Evidence: substantive assertions require references to supplied usable evidence IDs. Unknown observations may have no citation but must state a limitation. Bounding boxes, coordinates and regions are not supported or generated. Every descriptor retains image identity, role and capture relationship.
+- Uncertainty: global and per-observation limitations retain blur, glare, occlusion, poor lighting, insufficient angle and similar descriptions as supplied. Multiple observations are retained in order. Explicit conflicts and contradictory identity/component/condition assertions are flagged rather than resolved by choosing an image.
+
+The deterministic rule boundary reparses normalized observations, so constructing a dataclass manually does not bypass structural/evidence validation. Current rules retain the observation batch for traceability but still return UNCERTAIN and pending_review because authoritative reference/policy dependencies remain unresolved. Fixture runs retain a `fixture_observations_only` blocker. There is no model confidence or invented telemetry.
+
+### Failures, attempts and isolation
+
+Unconfigured provider, provider unavailability, timeout, exception, empty/invalid response and missing/unreadable images produce explicit unavailable runs and review results. Invalid JSON/schema/evidence is reported as `invalid_response`; foreign organization/client/unit/record responses become `response_scope_mismatch`. Rejected raw text is discarded rather than stored under a potentially wrong owner. Valid raw text and normalized observations are retained separately. Failed runs contain no observations and never imply mismatch, missing parts or damage. Invalid input scopes are rejected before any provider call and no foreign inputs are persisted.
+
+Audit fixes reject invalid Unicode scalars in raw response text, decoded observation text and textual provider metadata without replacement or normalization. Oversized latency integers that overflow finite-number validation are rejected as ValidationError. Both audited cases follow the existing `invalid_response` unavailable/review path and persist a failure attempt without invalid observations or replacement telemetry.
+
+`Store.vision_attempts(record_id)` returns attempts only inside its bound organization/client scope. Each saved run is revalidated against its capture, raw response and deterministic assessment. The additive `vision_attempts` table works with existing Phase 1 databases without replacing captures or prior assessments. A local database-generated attempt_id identifies an attempt; it is not a provider request ID or a replacement for record_id/unit_id. Explicit repeat inspection calls append attempts, including failures; they are not silently cached or auto-retried. The original `ingest()` retains Phase 1 idempotency.
+
+The library boundary still trusts the authenticated-context supplier and image registration caller; authentication and image ownership resolution must be provided by a future application. Parser validation establishes structure and declared provenance, not the truth of model assertions. Test success is not visual accuracy. Complete review/override UI, real vision calls, official wire export, business policy, deployment and evaluation remain deliberately unimplemented.
+
 ## Engineering test result
 
-Final run on 2026-09-26: **35 tests passed, 0 failures, 0 errors**, using `python -B -m unittest discover -s tests -v`. Includes all 24 units/both organisations through persistence, lineage, malformed input, absent images/client context, disposition validation, bidirectional isolation, guessed evidence references, idempotency/conflicts, injected failure/retry and CLI behavior. These are foundation tests, not a 50-unit visual evaluation or an accuracy/latency/cost measurement.
+Phase 2 final runs on 2026-09-26: **92 tests passed, 0 failures, 0 errors** per run (35 unchanged foundation tests plus 57 observation-layer tests). Executed `python -B -m unittest discover -s tests -q` on Python 3.13.4 without Pillow, and the same suite with the bundled Python/Pillow 12.3.0 runtime to exercise the actual corrupt-image decoder path. The standard verbose command above runs the same suite. These are engineering tests, not a 50-unit visual evaluation or an accuracy/latency/cost measurement.
+
+After the two audit fixes: **96 tests passed, 0 failures, 0 errors**, using the same complete suite on Python 3.13.4. All 92 existing tests remain; four new regression tests cover invalid Unicode persistence/review handling, invalid Unicode metadata, unchanged valid-Unicode round trips and oversized-latency failure persistence.
 
 ## Expected layout from the template
 
@@ -65,7 +113,7 @@ The template lists README.md, 01-customer-letter.md, 02-prfaq.md, 03-one-pager.m
 
 - Face 1, customer letter/PRFAQ/one-pager: not created.
 - Face 2, CLAUDE.md: not created.
-- Face 3, headless agent on fixtures: Phase 1 ingestion/persistence/review scaffolding only; no vision or decisive grading.
+- Face 3, headless agent on fixtures: Phase 1 foundation plus Phase 2 fixture observation pipeline; no real model inference or decisive grading.
 - Face 4, evaluation report: not run; methodology planned in the brief.
 - Face 5, evidence record page: concept only.
 - Face 6, cross-pod contract: template conflict; use official organiser contract for Round 2.
@@ -76,4 +124,4 @@ Not yet established through customer validation. Proposed engineering stop gate:
 
 ## Final submission work still outstanding
 
-Full working inspection implementation, ARCHITECTURE.md, actual evaluation results, real demo video, deployment where applicable and required LinkedIn/submission links. Do not treat Phase 1 as a completed submission. Assumptions, limitations and questions are recorded in the build brief. All future writes remain within this participant directory unless the user changes the scope.
+Full working inspection implementation, ARCHITECTURE.md, actual evaluation results, real demo video, deployment where applicable and required LinkedIn/submission links. Do not treat the fixture observation layer as a completed submission. Assumptions, limitations and questions are recorded in the build brief. All future writes remain within this participant directory unless the user changes the scope.

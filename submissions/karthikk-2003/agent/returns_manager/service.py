@@ -22,3 +22,19 @@ def ingest(row, source, store: Store) -> dict:
         raise
     store.save_assessment(capture, result)
     return store.get(capture.record_id)
+
+
+def inspect_capture(row, source, store: Store, images, provider=None) -> int:
+    """Explicit observation attempt, separate from idempotent Phase 1 CSV ingestion.
+
+    Retains the original capture/assessment. Returns an actual local attempt ID,
+    never a fabricated provider request ID. Repeat calls append separate attempts.
+    """
+    from .vision import observe
+
+    capture = parse_record(row, store.context, source)
+    store.save_capture(capture)
+    run = observe(capture, images, provider)
+    observation = run.observations if run.observations is not None else ObservationPlaceholder(run.error_code)
+    result = assess(capture, observation)
+    return store.save_vision_attempt(capture, run, result)

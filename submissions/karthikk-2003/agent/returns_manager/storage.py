@@ -40,6 +40,16 @@ class Store:
             processing_error TEXT,
             PRIMARY KEY (organization_id, client_scope, record_id)
         )""")
+        # Additive Phase 2 storage: never replace a Phase 1 assessment.
+        self._db.execute("""CREATE TABLE IF NOT EXISTS vision_attempts (
+            attempt_id INTEGER PRIMARY KEY AUTOINCREMENT,
+            organization_id TEXT NOT NULL,
+            client_scope TEXT NOT NULL,
+            record_id TEXT NOT NULL,
+            unit_id TEXT NOT NULL,
+            payload TEXT NOT NULL,
+            assessment TEXT NOT NULL
+        )""")
         self._db.commit()
 
     def __enter__(self):
@@ -70,6 +80,10 @@ class Store:
             return cursor.rowcount == 1
 
     def save_assessment(self, capture: Capture, assessment: Assessment) -> None:
+        from .observations import ObservationBatch
+
+        if isinstance(assessment, Assessment) and isinstance(assessment.observation, ObservationBatch):
+            raise ValidationError("vision observations require save_vision_attempt with the raw response")
         # Prevent mismatched/manual fabricated results from being attached to a capture.
         if not isinstance(assessment, Assessment) or assessment != assess(capture, assessment.observation):
             raise ValidationError("assessment does not match Phase 1 rules")
@@ -125,3 +139,31 @@ class Store:
             return None
         return next((image for image in record["capture"]["images"]
                      if image["reference"] == reference), None)
+
+    def save_vision_attempt(self, capture: Capture, run, assessment: Assessment) -> int:
+        from .vision import validate_run
+        from .domain import ObservationPlaceholder
+
+        if capture.tenant != self.context:
+            raise TenantMismatch("vision persistence scope mismatch")
+        validate_run(capture, run)
+        observation = run.observations if run.observations is not None else ObservationPlaceholder(run.error_code)
+        if assessment != assess(capture, observation):
+            raise ValidationError("vision assessment must match validated run")
+        self.save_capture(capture)
+        with self._db:
+            cursor = self._db.execute(
+                "INSERT INTO vision_attempts (organization_id, client_scope, record_id, unit_id, payload, assessment) "
+                "VALUES (?, ?, ?, ?, ?, ?)",
+                (*self._scope, capture.record_id, capture.unit.unit_id, encode(run), encode(assessment)),
+            )
+            return cursor.lastrowid
+
+    def vision_attempts(self, record_id: str) -> list[dict]:
+        identifier(record_id, "record_id")
+        rows = self._db.execute(
+            "SELECT attempt_id, payload, assessment FROM vision_attempts "
+            "WHERE organization_id=? AND client_scope=? AND record_id=? ORDER BY attempt_id",
+            (*self._scope, record_id),
+        ).fetchall()
+        return [{"attempt_id": row[0], "run": json.loads(row[1]), "assessment": json.loads(row[2])} for row in rows]

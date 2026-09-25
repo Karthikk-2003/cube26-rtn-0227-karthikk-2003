@@ -1,7 +1,13 @@
 """Immutable internal types. No grades, observations or confidence are inferred."""
 
+from __future__ import annotations
+
 from dataclasses import dataclass, field
 from enum import Enum
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from .observations import ObservationBatch
 
 
 class ValidationError(ValueError):
@@ -190,6 +196,6 @@ class Assessment:
     condition: ConditionResult
     disposition: DispositionResult
     review: ReviewState
-    observation: ObservationPlaceholder
+    observation: ObservationPlaceholder | ObservationBatch
     rule_version: str = field(default="phase1-missing-evidence-1", init=False)
     format_notice: str = field(default="internal_only_not_official_wire_contract", init=False)
