@@ -1,5 +1,46 @@
 # Returns Manager build log
 
+## 2026-09-26 - Two targeted Phase 3 audit fixes
+
+Fixed only the two reported validation-boundary issues. ReviewWorkflow._source/_item now use the existing domain identifier validator for record_id/unit_id instead of bounded observation text. No identifier is truncated and no new maximum is introduced. Accepted identifiers on either side of the existing 8,192-character observation-text boundary now persist, route, retrieve and retry unchanged, with tenant isolation intact.
+
+Moved Unicode-scalar validation into domain.py and reused it from observations.py. The helper explicitly rejects surrogate code points without encoding/decoding, replacing or normalizing input. Identifier validation uses it; parse_record checks all retained row values and revalidates tenant/source metadata before persistence. Historical/free-text capture fields are included. Phase 2 raw/normalized/provider checks share the helper, and their text limits and failure routing remain unchanged.
+
+Added tests/test_input_boundaries.py: 11 focused tests covering long record/unit IDs, exact round trips, short-ID compatibility, unchanged observation length limits, bidirectional tenant isolation, invalid Unicode in operator/all other row fields and tenant/source metadata, direct persistence revalidation, no partial capture/attempt/review history, corrected retries, valid composed/decomposed/supplementary Unicode and malformed identifiers. Fixtures are synthetic engineering data only. Existing tests were not edited or weakened.
+
+Commands executed with PYTHONDONTWRITEBYTECODE=1 and PYTEST_ADDOPTS='-p no:cacheprovider', using Python 3.13.4:
+
+- Targeted first: `python -m pytest submissions/karthikk-2003/tests/test_input_boundaries.py -v` -> **11 passed, 56 subtests passed in 1.48s; 0 failed, 0 errors, 0 warnings**.
+- Complete suite: `python -m pytest submissions/karthikk-2003/tests/ -v` -> **143 passed, 251 subtests passed in 4.20s; 0 failed, 0 errors, 0 warnings**. All previous 132 tests pass. Durations are test-runner timings, not provider telemetry.
+
+Files changed by this fix: agent/returns_manager/domain.py, observations.py, validation.py, review_storage.py, README.md and this log. Added tests/test_input_boundaries.py. The earlier uncommitted Phase 3 files remain in the working tree. No policy, UI, endpoint, provider implementation, schema/transaction redesign or dependency changes. All writes remain inside submissions/karthikk-2003/; no generated artifacts intentionally added, staging, commit or push. No remaining concern identified for these two findings.
+
+## 2026-09-26 - Phase 3 backend evidence, uncertainty and review workflow
+
+Started from clean checkpoint `419eb9a` (Phase 2) after reading the supplied Phase 3 request, existing implementation, tests, README/log, planning and repository constraints. The current request supersedes the old brief's UI scope: this phase is backend only. All changes remain under submissions/karthikk-2003/.
+
+Baseline: the sandboxed unittest command stalled without a result and was terminated; the rerun with participant-local temporary database access completed **96 tests in 1.595s, OK (96 passed, 0 failures, 0 errors)** before code changes. No baseline test assertions were changed.
+
+Implemented:
+
+- `review.py`: internal trusted reviewer/human-decision contracts, independent identity/completeness assertions and deterministic machine-readable uncertainty routing. Missing/unreadable/fixture evidence, provider failures, ambiguous/conflicting observations, missing context, unverified references and unresolved policies stay explicit.
+- `review_storage.py`: additive review_items/review_events tables over the existing scoped Store connection; evidence/assessment views reference the existing capture or actual persisted vision attempt. Raw responses and normalized observations are not copied into review tables or rewritten. Cases expose source lineage, rule results, evidence availability, original uncertainty, effective human-attributed results and unresolved decisions.
+- Review routing is an explicit backend API, idempotent per source. Separate vision attempts remain separate review cases. Interrupted captures can be reviewed without an assessment; the original unavailable state is preserved even after an ingestion retry completes.
+- Internal pending_review/in_review/reviewed transitions, reopen support and append-only events preserve reviewer identity, UTC timestamp, reason, previous/new state and override citations. Revision checks and retry command IDs guard stale/duplicate edits; transactions prevent partial case/history writes. Reviewed is a workflow state, never a claim of final business disposition.
+- Human identity/completeness decisions stay separate from automated observations. Unknown/unavailable/foreign evidence references and forged decision objects are rejected. Fixture citations remain test-only. No new evidence, confidence, grades, telemetry or business-policy mappings are generated. Condition/disposition overrides remain blocked by unresolved policy.
+- Organization/client scope is taken from the existing trusted Store, and every review read/history/update checks stored record/unit association. Reviewer tenant context must match. There is no authentication server or cryptographic immutability claim.
+
+Added 36 tests in `tests/test_review.py` without editing the 35 foundation or 61 vision tests. Coverage includes lineage, missing evidence, provider failures, all three conflict families, ambiguity, policy/context gaps, queue retrieval/filtering, transitions, complete history, overriding/revising without changing original data, retries and distinct attempts, stale edits, forged evidence/identities, invalid IDs, cross-tenant/unit/record attempts, persisted history, transaction rollback and two-connection/restart behavior. All observation assertions and reviewer IDs are labelled synthetic test fixtures, not genuine evidence or model output.
+
+Verification on Python 3.13.4:
+
+1. Initial new suite: **129 tests in 1.973s; OK**.
+2. Added invalid-ID, atomic rollback and two-connection persistence coverage. Final complete command `python -B -m unittest discover -s tests -q`: **Ran 132 tests in 1.862s; OK. Passed 132, failed 0, errors 0.** Test-runner durations are not provider latency or evaluation results.
+
+Created: agent/returns_manager/review.py, agent/returns_manager/review_storage.py, tests/test_review.py. Modified: README.md and this build-log.md only. Existing Phase 1/2 modules/tests, dependencies, sample data and protections remain unchanged. No .pytest_cache changes, commit, push, UI, real provider, evaluation, deployment or submission work.
+
+Limitations/dependencies: authoritative condition/disposition policy and official wire contract remain unavailable; real evidence/provider integration, trusted authentication/client context and host-level storage protection remain future work. The queue is an explicit local library API without pagination or HTTP/UI. Human assertions are not verified visual truth. A reviewed case can retain unresolved business decisions, and current policy gaps keep business_status pending_review. History is append-only through the API, not tamper-proof against a SQLite owner. Stopped at the requested backend checkpoint.
+
 ## 2026-09-26 - Fix the two Phase 2 P2 audit findings
 
 Changed only observations.py, tests/test_vision.py, this log and the participant README. Strict UTF-8 scalar validation now rejects lone surrogates in raw responses, decoded observation text and textual metadata, without sanitizing values. Latency validation converts numeric-conversion OverflowError into ValidationError rather than letting it escape. Existing orchestration turns these rejected responses into explicit unavailable runs, persisted failure attempts and pending_review outcomes; it does not invent replacement observations or telemetry.

@@ -18,10 +18,17 @@ class TenantMismatch(PermissionError):
     """Input does not belong to the caller's trusted context."""
 
 
+def validate_unicode_scalars(value: str) -> None:
+    """Reject surrogate code points without replacing or normalizing input."""
+    if not isinstance(value, str) or any(0xD800 <= ord(c) <= 0xDFFF for c in value):
+        raise ValidationError("text containing only valid Unicode scalars required")
+
+
 def identifier(value: str, name: str) -> str:
     if (not isinstance(value, str) or not value or value != value.strip()
             or any(ord(c) < 32 or ord(c) == 127 for c in value)):
         raise ValidationError(f"{name}: nonempty text without edge whitespace/control characters required")
+    validate_unicode_scalars(value)
     return value
 
 

@@ -2,7 +2,7 @@
 
 Participant: Karthik Karunakaran (@Karthikk-2003, supplied handoff).
 
-Status: Phase 1 foundation and Phase 2 observation layer implemented. Phase 2 adds a provider interface, explicitly synthetic fixture provider, validated structured observations and scoped observation-attempt persistence. No real multimodal API call, UI, authoritative grading/disposition policy, official wire-contract implementation or deployment exists.
+Status: Phase 1 foundation, Phase 2 observation layer and Phase 3 backend evidence/review workflow implemented. Phase 3 adds deterministic uncertainty routing, scoped review cases, append-only review history and attributed human identity/completeness decisions. No real multimodal API call, UI, authoritative grading/disposition policy, official wire-contract implementation or deployment exists.
 
 This index is adapted from [submissions/_TEMPLATE/README.md](../_TEMPLATE/README.md), which requests a participant README. Current [RULES](../../RULES.md) and [GitHub guide](../../GITHUB-GUIDE.md) instead describe an own-fork workflow without requiring participant folders or organiser PRs. This directory follows the user's requested boundary and is compatible with the retained guard's path rule; it does not imply a PR is required.
 
@@ -23,6 +23,9 @@ This index is adapted from [submissions/_TEMPLATE/README.md](../_TEMPLATE/README
 - `agent/returns_manager/observations.py`: observation dataclasses, strict raw JSON parser, evidence/scope validation and conflict detection.
 - `agent/returns_manager/vision.py`: image-input boundary, provider protocol, fixture replay provider and failure-safe observation pipeline.
 - `tests/test_vision.py`: synthetic observation/metadata fixtures, provider failures, isolation and integration tests.
+- `agent/returns_manager/review.py`: internal human decision contracts and pure deterministic uncertainty routing.
+- `agent/returns_manager/review_storage.py`: scoped evidence view, retry-safe review cases and append-only review events over an existing Store.
+- `tests/test_review.py`: synthetic review, lineage, isolation, override and persistence tests.
 - `requirements-images.txt`: optional Pillow dependency for validation of genuine image bytes; not needed for fixture tests or the Phase 1 CLI.
 - `.gitignore`: excludes local runtime databases and temporary test directories within this directory.
 
@@ -53,7 +56,7 @@ SQLite lookups require a Store bound to an explicit trusted TenantContext and in
 
 This local CLI trusts the operator's organization argument; it is **not an authentication service**. Database file access is not protected against its local owner. A future server must derive tenant context from authentication rather than user-submitted fields and protect storage at the host level. Phase 1 prevents accidental cross-tenant application lookups and never serves image bytes.
 
-Repeated ingestion of identical scoped record ID and full lineage returns the stored result without another assessment. Changed data or source lineage under the same scoped record ID raises ConflictError and does not overwrite prior input. Distinct organizations may use identical record/unit IDs safely. A processing exception preserves the committed capture, pending state and exception type (not sensitive exception text); an exact retry can resume when no assessment exists. Existing assessments cannot be silently replaced. Review overrides/version history are not implemented yet.
+Repeated ingestion of identical scoped record ID and full lineage returns the stored result without another assessment. Changed data or source lineage under the same scoped record ID raises ConflictError and does not overwrite prior input. Distinct organizations may use identical record/unit IDs safely. A processing exception preserves the committed capture, pending state and exception type (not sensitive exception text); an exact retry can resume when no assessment exists. Existing assessments cannot be silently replaced. Phase 3 stores human decisions in separate review history.
 
 The JSON output is labelled `internal_only_not_official_wire_contract`; it is not a Recovery Manager interoperability claim. Exact official schema, condition rules and disposition policy remain unresolved. See the build brief for details.
 
@@ -99,11 +102,55 @@ Audit fixes reject invalid Unicode scalars in raw response text, decoded observa
 
 The library boundary still trusts the authenticated-context supplier and image registration caller; authentication and image ownership resolution must be provided by a future application. Parser validation establishes structure and declared provenance, not the truth of model assertions. Test success is not visual accuracy. Complete review/override UI, real vision calls, official wire export, business policy, deployment and evaluation remain deliberately unimplemented.
 
+## Phase 3 backend evidence and review workflow
+
+`ReviewWorkflow(store)` adds `review_items` and `review_events` tables on the existing tenant-bound SQLite connection. Phase 1/2 code and behavior are unchanged. Routing is an explicit library call after ingestion/inspection; the CSV CLI does not automatically populate this queue. No additional dependency is needed.
+
+The API accepts persisted source identifiers, not caller-supplied evidence, assessments or observation payloads:
+
+- `route(record_id, unit_id, attempt_id=None)` returns a review ID. Omit attempt_id to select the original capture assessment; supply the actual saved vision attempt ID to select that attempt. Retrying the same source returns the same case without resetting its state. Distinct vision attempts get distinct cases.
+- `get(review_id, record_id, unit_id)` assembles the scoped capture, original photo references, descriptor availability, raw response, normalized observations, automated assessment (including rule version), routing reasons, human decisions and effective results. It joins existing evidence instead of copying raw/normalized evidence into review tables. Invalid provider responses remain unavailable as in Phase 2.
+- `queue(status=None)` lists only cases in the Store's trusted organization/client scope, optionally filtered by internal review status. `history(review_id, record_id, unit_id)` returns ordered events after the same scoped parent check.
+- `transition(..., reviewer, command_id, expected_revision, status, reason, decisions=())` appends an event. The reviewer must be a trusted `ReviewerContext(store.context, actual_operator_identity)`. The API validates its identity and tenant association; it does not authenticate the person. Actual timestamps are generated locally in UTC.
+
+Example integration after an actual existing `inspect_capture` call (the variables below must come from that caller; they are not generated evidence or client IDs):
+
+```python
+from returns_manager.review import ReviewerContext
+from returns_manager.review_storage import ReviewWorkflow
+
+workflow = ReviewWorkflow(store)
+review_id = workflow.route(record_id, unit_id, attempt_id=attempt_id)
+item = workflow.get(review_id, record_id, unit_id)
+event = workflow.transition(
+    review_id, record_id, unit_id,
+    reviewer=ReviewerContext(store.context, authenticated_operator_id),
+    command_id=review_action_id, expected_revision=item["revision"],
+    status="in_review", reason=operator_reason,
+)
+```
+
+Uncertainty is a deterministic list of internal `{code, dimension}` objects. It distinguishes missing/not-supplied evidence, unreadable images, unavailable decoding/providers, provider timeout/failure/invalid response, fixture-only evidence, ambiguous identity/components, identity/component/condition conflicts, insufficient coverage/condition evidence, missing client context, unverified references, unresolved condition/disposition policy and insufficient evidence for decisions. Provider limitations and conflicting assertions remain in the unchanged observation batch. Unknown/occluded does not become absent. Empty image lists and interrupted assessments remain reviewable; a case routed before assessment completion retains that original unavailable assessment context even if ingestion later resumes. A subsequent vision attempt can create a new case.
+
+Internal workflow transitions are `pending_review -> in_review`, `in_review -> in_review | pending_review | reviewed`, and `reviewed -> in_review` (reopen). `reviewed` means the human finished that review pass; it does **not** mean an official final disposition or policy approval. `business_status` remains `pending_review` and unresolved decisions remain explicit. These are internal application states, not claimed official external contract values.
+
+During active review, pass a tuple of `HumanDecision(dimension, verdict, evidence_refs)` values to record independent identity/completeness decisions. Verdicts use PASS/FAIL/UNCERTAIN; decisive human assertions require existing usable evidence IDs from that case. Missing, unavailable and foreign references are rejected. Fixture citations remain explicitly `fixture_only` and support test workflow only, not genuine product conclusions. The override endpoint cannot add images, OCR, coordinates, model metadata, observations or confidence. Free-text reasons are attributed human statements, never parsed into visual evidence.
+
+Human decisions overlay the reviewer-facing effective results with `source="human"` and an event revision. They never replace automated observations or results. Each event retains previous/new review state, actor identity, UTC timestamp, reason and override information/citations. Revisions and per-case command IDs prevent stale updates and duplicate retry events; reusing a command with changed content raises ConflictError. Case creation and its initial event, and each subsequent event, are transactional. There is no public history edit/delete API and no cryptographic immutability claim.
+
+Condition-grade and disposition overrides are deliberately rejected until authoritative policies and their validation contract are available. The workflow cannot turn a human review into guessed restock/refurbish/liquidate/dispose logic. Original uncertainty reasons remain preserved after human decisions. Review identity is supplied by trusted local configuration or a future authentication layer; choosing an ID is not proof of authority. SQLite owner access remains outside application isolation. The queue currently reads full cases without pagination, and each worker must use its own Store connection. No HTTP endpoints, UI, genuine provider integration, image serving, evaluation or deployment were added.
+
 ## Engineering test result
 
 Phase 2 final runs on 2026-09-26: **92 tests passed, 0 failures, 0 errors** per run (35 unchanged foundation tests plus 57 observation-layer tests). Executed `python -B -m unittest discover -s tests -q` on Python 3.13.4 without Pillow, and the same suite with the bundled Python/Pillow 12.3.0 runtime to exercise the actual corrupt-image decoder path. The standard verbose command above runs the same suite. These are engineering tests, not a 50-unit visual evaluation or an accuracy/latency/cost measurement.
 
 After the two audit fixes: **96 tests passed, 0 failures, 0 errors**, using the same complete suite on Python 3.13.4. All 92 existing tests remain; four new regression tests cover invalid Unicode persistence/review handling, invalid Unicode metadata, unchanged valid-Unicode round trips and oversized-latency failure persistence.
+
+Phase 3 final verification on 2026-09-26: `python -B -m unittest discover -s tests -q` -> **Ran 132 tests in 1.862s; OK. Passed 132, failed 0, errors 0.** All 96 existing tests are unchanged; 36 new synthetic engineering tests cover evidence lineage, explicit uncertainty, routing, transitions, history, overrides, policy boundaries, rejected forged inputs, bidirectional tenant isolation, unit/record isolation, retries, stale updates, rollback and persistence across connections/restarts. This duration is the test runner's duration, not inference latency or an evaluation measurement.
+
+After the two Phase 3 audit fixes, review record/unit lookups use the same identifier validation as ingestion, preserving accepted long identifiers exactly without imposing the observation-text limit. One shared Unicode-scalar validator rejects invalid capture values, tenant/source lineage and observation/provider text without replacement or normalization. Invalid capture input raises ValidationError before persistence; valid Unicode is preserved. The observation-text limit remains 8,192 characters and is not an official identifier-length rule.
+
+Added `tests/test_input_boundaries.py` with 11 focused regressions. Targeted pytest: **11 passed, 56 subtests passed in 1.48s**. Complete `python -m pytest submissions/karthikk-2003/tests/ -v` from repository root: **143 passed, 251 subtests passed in 4.20s; 0 failures, 0 errors, 0 warnings**. Bytecode/cache writes were disabled. All previous 132 tests remain unchanged and pass; these are engineering results only.
 
 ## Expected layout from the template
 
@@ -113,7 +160,7 @@ The template lists README.md, 01-customer-letter.md, 02-prfaq.md, 03-one-pager.m
 
 - Face 1, customer letter/PRFAQ/one-pager: not created.
 - Face 2, CLAUDE.md: not created.
-- Face 3, headless agent on fixtures: Phase 1 foundation plus Phase 2 fixture observation pipeline; no real model inference or decisive grading.
+- Face 3, headless agent on fixtures: Phase 1 foundation, Phase 2 fixture observation pipeline and Phase 3 backend review workflow; no real model inference or decisive grading.
 - Face 4, evaluation report: not run; methodology planned in the brief.
 - Face 5, evidence record page: concept only.
 - Face 6, cross-pod contract: template conflict; use official organiser contract for Round 2.

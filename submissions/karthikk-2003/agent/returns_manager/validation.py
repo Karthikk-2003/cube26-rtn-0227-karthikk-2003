@@ -10,7 +10,7 @@ from pathlib import Path
 from .domain import (
     Capture, Component, Disposition, EvidenceReference, OrderContext,
     ProductReference, SourceLineage, TenantContext, TenantMismatch, Unit,
-    ValidationError, identifier,
+    ValidationError, identifier, validate_unicode_scalars,
 )
 
 FIELDS = (
@@ -68,10 +68,16 @@ def read_csv(path: Path) -> list[tuple[dict[str, str], SourceLineage]]:
 def parse_record(row: dict[str, str], context: TenantContext, source: SourceLineage) -> Capture:
     if not isinstance(context, TenantContext) or not isinstance(source, SourceLineage):
         raise ValidationError("trusted tenant context and source lineage required")
+    # Recheck supplied context/lineage at the input boundary as well as construction.
+    TenantContext(context.organization_id, context.client_id)
+    SourceLineage(source.source_name, source.source_sha256, source.row_number)
     if not isinstance(row, dict) or set(row) != set(FIELDS):
         raise ValidationError("record must contain exactly the documented sample fields")
     if any(not isinstance(value, str) for value in row.values()):
         raise ValidationError("CSV values must be text")
+    # Includes historical/free-text fields retained verbatim in raw_fields.
+    for value in row.values():
+        validate_unicode_scalars(value)
     for name in ("record_id", "unit_id", "org_id", "order_id", "ordered_sku",
                  "ordered_asin", "operator_id", "captured_at"):
         identifier(row[name], name)

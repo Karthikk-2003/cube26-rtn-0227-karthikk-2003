@@ -8,7 +8,7 @@ import json
 import math
 from dataclasses import asdict, dataclass
 
-from .domain import Capture, TenantContext, TenantMismatch, ValidationError, identifier
+from .domain import Capture, TenantContext, TenantMismatch, ValidationError, identifier, validate_unicode_scalars
 from .validation import validate_capture
 
 
@@ -115,20 +115,10 @@ def sequence(value):
     return value
 
 
-def validate_unicode_scalars(value: str) -> None:
-    # Reject lone surrogates, including those decoded from JSON escapes. Do not
-    # replace or normalize provider data to make it persistable.
-    try:
-        value.encode("utf-8", errors="strict")
-    except UnicodeEncodeError as exc:
-        raise ValidationError("invalid Unicode scalar in provider data") from exc
-
-
 def text(value):
     identifier(value, "observation text")
     if len(value) > 8192:
         raise ValidationError("observation text too long")
-    validate_unicode_scalars(value)
     return value
 
 
