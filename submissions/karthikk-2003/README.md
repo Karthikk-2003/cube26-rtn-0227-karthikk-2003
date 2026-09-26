@@ -2,7 +2,7 @@
 
 Participant: Karthik Karunakaran (@Karthikk-2003, supplied handoff).
 
-Status: Phase 1 foundation, Phase 2 observation layer and Phase 3 backend evidence/review workflow implemented. Phase 3 adds deterministic uncertainty routing, scoped review cases, append-only review history and attributed human identity/completeness decisions. No real multimodal API call, UI, authoritative grading/disposition policy, official wire-contract implementation or deployment exists.
+Status: Phase 1 foundation, Phase 2 observation layer, Phase 3 backend evidence/review workflow and Phase 4 engineering evaluation foundation implemented. Visual benchmarking remains blocked by missing genuine evidence, authoritative labels and policies. No real multimodal API call, UI, authoritative grading/disposition policy, official wire-contract implementation or deployment exists.
 
 This index is adapted from [submissions/_TEMPLATE/README.md](../_TEMPLATE/README.md), which requests a participant README. Current [RULES](../../RULES.md) and [GitHub guide](../../GITHUB-GUIDE.md) instead describe an own-fork workflow without requiring participant folders or organiser PRs. This directory follows the user's requested boundary and is compatible with the retained guard's path rule; it does not imply a PR is required.
 
@@ -10,6 +10,7 @@ This index is adapted from [submissions/_TEMPLATE/README.md](../_TEMPLATE/README
 
 - [Build brief](build-brief.md): source-backed repository findings, proposed architecture, data/evidence contract, evaluation methodology, roadmap and open questions.
 - [Build log](build-log.md): audit, implementation history and actual engineering test results.
+- [Evaluation contract/discovery](evaluation/README.md) and [executed JSON report](evaluation/results.json): reproducible engineering checks and explicitly blocked visual scenarios.
 
 ## Implemented structure
 
@@ -26,6 +27,8 @@ This index is adapted from [submissions/_TEMPLATE/README.md](../_TEMPLATE/README
 - `agent/returns_manager/review.py`: internal human decision contracts and pure deterministic uncertainty routing.
 - `agent/returns_manager/review_storage.py`: scoped evidence view, retry-safe review cases and append-only review events over an existing Store.
 - `tests/test_review.py`: synthetic review, lineage, isolation, override and persistence tests.
+- `agent/returns_manager/evaluation.py` and `evaluation_data.py`: isolated engineering cases, repository-data inventory, blocked scenarios and structured results.
+- `tests/test_evaluation.py`: evaluation harness regression tests; no visual golden labels.
 - `requirements-images.txt`: optional Pillow dependency for validation of genuine image bytes; not needed for fixture tests or the Phase 1 CLI.
 - `.gitignore`: excludes local runtime databases and temporary test directories within this directory.
 
@@ -100,7 +103,7 @@ Audit fixes reject invalid Unicode scalars in raw response text, decoded observa
 
 `Store.vision_attempts(record_id)` returns attempts only inside its bound organization/client scope. Each saved run is revalidated against its capture, raw response and deterministic assessment. The additive `vision_attempts` table works with existing Phase 1 databases without replacing captures or prior assessments. A local database-generated attempt_id identifies an attempt; it is not a provider request ID or a replacement for record_id/unit_id. Explicit repeat inspection calls append attempts, including failures; they are not silently cached or auto-retried. The original `ingest()` retains Phase 1 idempotency.
 
-The library boundary still trusts the authenticated-context supplier and image registration caller; authentication and image ownership resolution must be provided by a future application. Parser validation establishes structure and declared provenance, not the truth of model assertions. Test success is not visual accuracy. Complete review/override UI, real vision calls, official wire export, business policy, deployment and evaluation remain deliberately unimplemented.
+The library boundary still trusts the authenticated-context supplier and image registration caller; authentication and image ownership resolution must be provided by a future application. Parser validation establishes structure and declared provenance, not the truth of model assertions. Test success is not visual accuracy. Complete review/override UI, real vision calls, official wire export, business policy, deployment and genuine visual benchmarking remain unimplemented.
 
 ## Phase 3 backend evidence and review workflow
 
@@ -142,6 +145,8 @@ Condition-grade and disposition overrides are deliberately rejected until author
 
 ## Engineering test result
 
+Phase 4 final suite: **163 passed, 263 subtests passed in 10.42s; 0 failures, 0 errors, 0 warnings** on Python 3.13.4/pytest 9.1.1. The previous 143 tests are unchanged; 20 new tests cover the harness. These timings are test-runner durations, not provider telemetry.
+
 Phase 2 final runs on 2026-09-26: **92 tests passed, 0 failures, 0 errors** per run (35 unchanged foundation tests plus 57 observation-layer tests). Executed `python -B -m unittest discover -s tests -q` on Python 3.13.4 without Pillow, and the same suite with the bundled Python/Pillow 12.3.0 runtime to exercise the actual corrupt-image decoder path. The standard verbose command above runs the same suite. These are engineering tests, not a 50-unit visual evaluation or an accuracy/latency/cost measurement.
 
 After the two audit fixes: **96 tests passed, 0 failures, 0 errors**, using the same complete suite on Python 3.13.4. All 92 existing tests remain; four new regression tests cover invalid Unicode persistence/review handling, invalid Unicode metadata, unchanged valid-Unicode round trips and oversized-latency failure persistence.
@@ -152,6 +157,28 @@ After the two Phase 3 audit fixes, review record/unit lookups use the same ident
 
 Added `tests/test_input_boundaries.py` with 11 focused regressions. Targeted pytest: **11 passed, 56 subtests passed in 1.48s**. Complete `python -m pytest submissions/karthikk-2003/tests/ -v` from repository root: **143 passed, 251 subtests passed in 4.20s; 0 failures, 0 errors, 0 warnings**. Bytecode/cache writes were disabled. All previous 132 tests remain unchanged and pass; these are engineering results only.
 
+## Phase 4 evaluation foundation
+
+Discovery rechecked the actual repository: 24 synthetic units (11 alpha, 13 bravo), 72 placeholder image references with zero resolving files, 24 historical identity=yes annotations, 24 blank condition grades and unverified parts expectations on every row. Five rows list one missing component. The data guide expressly prohibits using these annotations as ground truth. There is no separate 50-unit set, independent labels, complete applicable condition policy or condition-to-disposition mapping.
+
+The harness executes one missing-evidence contract case per sample row plus ten labelled safety/fault probes for each of the two existing organizations. Each case uses a fresh in-memory Store; original source records/images are not edited. It preserves identifiers, source hashes/rows, evidence references, observed results and uncertainty/review reasons. The isolation probe verifies the same populated SQLite image through the other existing tenant's scoped Store. Expected outputs are engineering contract assertions from repository/internal rules, never guessed product labels. No human decisions or visual observations are fabricated.
+
+The executed report contains **54 cases: 44 engineering PASS, 0 FAIL, 10 visual-scenario BLOCKED**. **34 cases have an actual UNCERTAIN/REVIEW state**, which overlaps PASS/FAIL and is not a fourth additive status. The 24 unchanged sample cases all retain UNCERTAIN identity/completeness/condition and pending_review disposition. All ten requested visual scenarios remain blocked; the detailed contract records the exact available annotation candidates and missing prerequisites for each. This is not 54 unseen units or completed visual scenario coverage.
+
+Supported metrics are inventory/availability counts, observed per-layer verdict counts, engineering failure counts and deterministic review-reason distributions. Identity/component/physical-observation/condition/disposition accuracy and review precision/recall are BLOCKED with null values. Automated review routing is not independent human labelling. Real latency/cost and human agreement remain unmeasured. Repeated execution produced identical report bytes and preserved the source CSV hash.
+
+Run from repository root (PowerShell):
+
+```powershell
+$env:PYTHONDONTWRITEBYTECODE = '1'
+$env:PYTEST_ADDOPTS = '-p no:cacheprovider'
+python -m pytest submissions/karthikk-2003/tests/ -v
+$env:PYTHONPATH = Join-Path (Get-Location) 'submissions/karthikk-2003/agent'
+python -B -m returns_manager.evaluation --output submissions/karthikk-2003/evaluation/results.json
+```
+
+See [evaluation/README.md](evaluation/README.md) for the internal report contract, exact probe definitions, exit codes, scenario blockers and required genuine benchmark collection. Exit 0 means no engineering failures, even while visual scenarios remain blocked.
+
 ## Expected layout from the template
 
 The template lists README.md, 01-customer-letter.md, 02-prfaq.md, 03-one-pager.md, CLAUDE.md, build-brief.md, build-log.md, eval-report.md, contract/ and agent/. This README, planning documents and the Phase 1 package/tests exist. Other entries are deferred, not completed requirements. Current Round 2 instructions require the official evidence contract and explicitly reject a separately negotiated cross-pod contract.
@@ -161,7 +188,7 @@ The template lists README.md, 01-customer-letter.md, 02-prfaq.md, 03-one-pager.m
 - Face 1, customer letter/PRFAQ/one-pager: not created.
 - Face 2, CLAUDE.md: not created.
 - Face 3, headless agent on fixtures: Phase 1 foundation, Phase 2 fixture observation pipeline and Phase 3 backend review workflow; no real model inference or decisive grading.
-- Face 4, evaluation report: not run; methodology planned in the brief.
+- Face 4, evaluation report: Phase 4 engineering report executed; all ten genuine visual scenarios blocked. Separate unseen-unit benchmarking remains outstanding.
 - Face 5, evidence record page: concept only.
 - Face 6, cross-pod contract: template conflict; use official organiser contract for Round 2.
 
