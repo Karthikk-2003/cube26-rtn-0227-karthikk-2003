@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Returns Manager | Inspection workstation</title>
+<link rel="stylesheet" href="/assets/workstation.css"><script src="/assets/workstation.js" defer></script>
+</head>
+<body>
+<a class="skip" href="#workspace">Skip to inspection</a>
+<header class="app-header">
+<div class="brand"><span class="brand-mark" aria-hidden="true">R</span><div><strong>Returns Manager</strong><span class="subtle">Inspection workstation</span></div></div>
+<div class="header-context"><span class="badge">LOCAL DEMO</span><span id="organization">Scope loading…</span></div>
+<div class="operator-context"><span id="reviewer">Reviewer loading…</span><span id="system-status" role="status">Connecting</span></div>
+</header>
+<div id="notice" class="notice" role="status" aria-live="polite"></div>
+<div class="app-layout">
+<aside class="queue-panel" aria-labelledby="queue-title">
+<div class="section-head"><div><p class="eyebrow">WORKLIST</p><h1 id="queue-title">Review queue <span id="queue-count" class="count">—</span></h1></div><button id="refresh" class="quiet" type="button">Refresh</button></div>
+<label for="queue-filter">Workflow filter</label><select id="queue-filter"><option value="all">All cases</option><option value="pending_review">Pending review</option><option value="in_review">In review</option><option value="reviewed">Reviewed</option><option value="reopened">Reopened</option></select>
+<p class="caption">Workflow status is separate from business disposition.</p>
+<div id="queue-state" role="status"></div><nav id="queue-list" aria-label="Returns awaiting inspection"></nav>
+<div class="queue-footer">Evidence first. Uncertainty stays visible.</div>
+</aside>
+<main id="workspace" tabindex="-1">
+<div id="workspace-state" class="workspace-empty"><p class="eyebrow">INSPECTION</p><h2>Select a return</h2><p>Review its source, evidence and unresolved decisions.</p></div>
+<div id="workspace-content" hidden>
+<section class="context-card" aria-labelledby="return-title"><div class="section-head"><div><p class="eyebrow">RETURN INSPECTION</p><h2 id="return-title"></h2></div><button id="open-review" class="primary" type="button">Review actions</button></div><div id="return-meta" class="meta-grid"></div><div id="return-status" class="status-strip"></div></section>
+<div id="provenance-banner" class="provenance-banner"></div>
+<nav class="section-nav" aria-label="Inspection sections"><a href="#identity">Identity</a><a href="#completeness">Completeness</a><a href="#condition">Condition</a><a href="#evidence">Evidence</a><a href="#uncertainty">Review reasons</a><a href="#history">History</a></nav>
+<div class="inspection-grid">
+<section id="identity" class="panel"><div class="panel-heading"><span class="section-number">01</span><h2>Identity</h2></div><div id="identity-body"></div></section>
+<section id="condition" class="panel"><div class="panel-heading"><span class="section-number">03</span><h2>Physical condition</h2></div><div id="condition-body"></div></section>
+<section id="completeness" class="panel full"><div class="panel-heading"><span class="section-number">02</span><h2>Completeness</h2></div><div id="completeness-body"></div></section>
+<section id="evidence" class="panel full"><div class="panel-heading"><span class="section-number">04</span><h2>Evidence inspector</h2></div><div id="evidence-body"></div></section>
+<section id="uncertainty" class="panel full review-panel"><div class="panel-heading"><span class="section-number">05</span><h2>Why review is required</h2></div><div id="uncertainty-body"></div></section>
+<section id="history" class="panel full"><div class="panel-heading"><span class="section-number">06</span><h2>Audit history</h2><button id="reload-history" type="button" class="quiet">Refresh history</button></div><p class="caption">Attributed changes. Original automated evidence is retained.</p><div id="history-body" aria-live="polite"></div></section>
+</div></div>
+<footer class="workspace-footer">Local review workflow · Internal data contract · No production authentication</footer>
+</main></div>
+<dialog id="review-dialog" aria-labelledby="dialog-title"><form id="review-form">
+<div class="section-head"><div><p class="eyebrow">HUMAN REVIEW</p><h2 id="dialog-title">Record a review action</h2></div><button id="close-review" type="button" class="quiet" aria-label="Close review form">Close</button></div>
+<p id="review-context" class="caption"></p><div class="provenance-banner">Reviewed is a workflow state. Business disposition remains pending review.</div>
+<fieldset id="review-fields"><legend class="sr-only">Review action</legend>
+<label for="target-status">Workflow action</label><select id="target-status" required></select>
+<div class="form-grid"><div><label for="identity-decision">Identity assertion</label><select id="identity-decision"><option value="">No change</option><option value="UNCERTAIN">UNCERTAIN</option><option value="PASS">PASS — evidence required</option><option value="FAIL">FAIL — evidence required</option></select></div><div><label for="completeness-decision">Completeness assertion</label><select id="completeness-decision"><option value="">No change</option><option value="UNCERTAIN">UNCERTAIN</option><option value="PASS">PASS — evidence required</option><option value="FAIL">FAIL — evidence required</option></select></div></div>
+<p id="assertion-guidance" class="caption"></p><fieldset id="citation-options"><legend>Evidence citations for assertions</legend><div id="citation-list"></div></fieldset>
+<label for="review-reason">Reason <span class="caption">Required</span></label><textarea id="review-reason" required maxlength="8192" rows="4" placeholder="Explain this action and any evidence limitations."></textarea>
+</fieldset><p id="review-feedback" role="alert"></p><div class="dialog-footer"><span class="caption">No condition or disposition overrides.</span><button id="save-review" type="submit" class="primary">Save review action</button></div>
+</form></dialog>
+<noscript>This workstation requires JavaScript. No review action occurs without an explicit submission. Automated vision is not implemented yet.</noscript>
+</body></html>

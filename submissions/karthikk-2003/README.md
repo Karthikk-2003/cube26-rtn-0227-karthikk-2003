@@ -2,7 +2,7 @@
 
 Participant: Karthik Karunakaran (@Karthikk-2003, supplied handoff).
 
-Status: Phase 1 foundation, Phase 2 observation layer, Phase 3 backend evidence/review workflow and Phase 4 engineering evaluation foundation implemented. Visual benchmarking remains blocked by missing genuine evidence, authoritative labels and policies. No real multimodal API call, UI, authoritative grading/disposition policy, official wire-contract implementation or deployment exists.
+Status: Phase 1 foundation, Phase 2 observation layer, Phase 3 backend evidence/review workflow, Phase 4 engineering evaluation foundation, Phase 5A local WSGI adapter and Phase 5B browser inspection workstation implemented. Visual benchmarking remains blocked by missing genuine evidence, authoritative labels and policies. No real multimodal API call, authoritative grading/disposition policy, official wire-contract implementation or public deployment exists.
 
 This index is adapted from [submissions/_TEMPLATE/README.md](../_TEMPLATE/README.md), which requests a participant README. Current [RULES](../../RULES.md) and [GitHub guide](../../GITHUB-GUIDE.md) instead describe an own-fork workflow without requiring participant folders or organiser PRs. This directory follows the user's requested boundary and is compatible with the retained guard's path rule; it does not imply a PR is required.
 
@@ -29,6 +29,11 @@ This index is adapted from [submissions/_TEMPLATE/README.md](../_TEMPLATE/README
 - `tests/test_review.py`: synthetic review, lineage, isolation, override and persistence tests.
 - `agent/returns_manager/evaluation.py` and `evaluation_data.py`: isolated engineering cases, repository-data inventory, blocked scenarios and structured results.
 - `tests/test_evaluation.py`: evaluation harness regression tests; no visual golden labels.
+- `agent/returns_manager/ui.py`: standard-library, loopback-only WSGI adapter over existing scoped review APIs.
+- `agent/returns_manager/ui_static/index.html`: semantic inspection workstation and native review dialog.
+- `agent/returns_manager/ui_static/workstation.css`: desktop layout, responsive stacking and keyboard focus styles.
+- `agent/returns_manager/ui_static/workstation.js`: vanilla JavaScript queue, inspection/evidence/history views and Fetch-based review actions.
+- `tests/test_ui.py`: HTTP boundary, review/isolation regressions and real loopback endpoint smoke checks.
 - `requirements-images.txt`: optional Pillow dependency for validation of genuine image bytes; not needed for fixture tests or the Phase 1 CLI.
 - `.gitignore`: excludes local runtime databases and temporary test directories within this directory.
 
@@ -103,7 +108,7 @@ Audit fixes reject invalid Unicode scalars in raw response text, decoded observa
 
 `Store.vision_attempts(record_id)` returns attempts only inside its bound organization/client scope. Each saved run is revalidated against its capture, raw response and deterministic assessment. The additive `vision_attempts` table works with existing Phase 1 databases without replacing captures or prior assessments. A local database-generated attempt_id identifies an attempt; it is not a provider request ID or a replacement for record_id/unit_id. Explicit repeat inspection calls append attempts, including failures; they are not silently cached or auto-retried. The original `ingest()` retains Phase 1 idempotency.
 
-The library boundary still trusts the authenticated-context supplier and image registration caller; authentication and image ownership resolution must be provided by a future application. Parser validation establishes structure and declared provenance, not the truth of model assertions. Test success is not visual accuracy. Complete review/override UI, real vision calls, official wire export, business policy, deployment and genuine visual benchmarking remain unimplemented.
+The library boundary still trusts the authenticated-context supplier and image registration caller; authentication and image ownership resolution must be provided by a future application. Parser validation establishes structure and declared provenance, not the truth of model assertions. Test success is not visual accuracy. Real vision calls, official wire export, business policy, deployment and genuine visual benchmarking remain unimplemented. Phase 5B exposes the supported human review actions in the local browser.
 
 ## Phase 3 backend evidence and review workflow
 
@@ -143,7 +148,89 @@ Human decisions overlay the reviewer-facing effective results with `source="huma
 
 Condition-grade and disposition overrides are deliberately rejected until authoritative policies and their validation contract are available. The workflow cannot turn a human review into guessed restock/refurbish/liquidate/dispose logic. Original uncertainty reasons remain preserved after human decisions. Review identity is supplied by trusted local configuration or a future authentication layer; choosing an ID is not proof of authority. SQLite owner access remains outside application isolation. The queue currently reads full cases without pagination, and each worker must use its own Store connection. No HTTP endpoints, UI, genuine provider integration, image serving, evaluation or deployment were added.
 
+## Phase 5 local browser workstation and boundary
+
+No new runtime dependency is required. From this participant directory, supply your actual local reviewer identity explicitly:
+
+```powershell
+$env:PYTHONPATH = Join-Path (Get-Location) 'agent'
+$reviewerId = Read-Host 'Your actual reviewer identifier'
+python -B -m returns_manager.ui --organization org_demo_alpha --reviewer $reviewerId --port 8000
+```
+
+Open `http://127.0.0.1:8000/`. The exact numeric host is required; `localhost` is not an accepted Host alias. The server always binds to 127.0.0.1, defaults to participant-local `runtime/returns.sqlite3`, and accepts `--database` only for a `.sqlite3` path within the participant directory. `--client` is optional and must identify actual trusted client context; omission remains the exact null scope. Missing/invalid reviewer configuration fails startup. Sample `op_*` values are dummy capture operators, not authenticated reviewer identities.
+
+This is trusted local configuration, **not production authentication**. Organization and reviewer identity are configured on the server, never taken from browser fields or identity headers. Python's reference WSGI server is for the local demo, not public hosting. Do not expose it with a public tunnel or reverse proxy and claim authentication.
+
+Startup initializes SQLite schemas but does not seed captures, call a provider, route reviews or append events. A new database returns an empty queue. Existing ingestion alone does not create review cases. A trusted local caller can explicitly call `ingest(row, source, store)` and then `ReviewWorkflow(store).route(record_id, unit_id)` for its selected organization, as described in the Phase 3 library example. There is deliberately no import/upload/routing browser endpoint in Phase 5A. Tests seed only their own temporary databases; the server never imports test modules or the mixed-tenant evaluation report.
+
+Internal routes (not the official Buildathon schema):
+
+- `GET /health`: `{"status":"ok"}`; confirms the adapter is responding, not model/database readiness.
+- `GET /api/context`: read-only configured organization, optional client, reviewer, local-demo environment and internal-contract notice. Browser identity overrides are rejected.
+- `GET /api/reviews`: `reviews` containing minimal identifiers, exact scope, source key, status/business status, revision, timestamps, uncertainty and unresolved decisions. Optional `?status=pending_review`, `in_review` or `reviewed` uses the existing workflow filter.
+- `GET /api/reviews/{review_id}`: review metadata, capture order/reference/provenance, evidence descriptors, normalized observations, accepted raw response if available, separate automated/human/effective results and allowed transitions. Historical CSV labels are not projected as current findings. Null grade/confidence and unknown/occluded component states are preserved.
+- `GET /api/reviews/{review_id}/history`: existing events, with `(review_id, revision)` as event identity. Actors, reasons, timestamps, prior/new state and overrides are retained. Append-only through the workflow API does not mean cryptographically immutable.
+- `POST /api/reviews/{review_id}/transition`: existing transactional workflow transition; response contains the actual appended or replayed `event` and `review_id`. Reload detail after success to obtain current state. No vision run or original assessment is modified.
+
+Case IDs are numeric review IDs. The adapter resolves their record/unit association via the tenant-scoped public queue, then calls the scoped get/history/transition API. There is no adapter SQL. This O(n) resolution is intended for the small local dataset. Multiple observation attempts can have separate review cases for one return. Each request opens/closes its own Store; browser GETs never route cases or create events.
+
+Transition JSON requires exactly `status`, `reason`, `expected_revision` and `command_id`, plus optional `decisions`. Each decision has exactly `dimension`, `verdict`, `evidence_refs`; existing domain rules allow only identity/completeness PASS/FAIL/UNCERTAIN and require usable citations for decisive assertions. Condition/disposition overrides remain rejected. The server does not invent IDs, grades, missing components or evidence. Fixture citations retain `fixture_only` provenance. A reviewed workflow still has `pending_review` business status.
+
+For same-origin browser mutations, send `Content-Type: application/json` and `X-Returns-Request: 1`; the browser supplies its `Origin`. An example body for an existing revision-1 case is:
+
+```json
+{"status":"in_review","reason":"Starting review of unavailable evidence","expected_revision":1,"command_id":"<unique-command-id-for-this-action>"}
+```
+
+Generate a command ID once for each intentional action and reuse the exact body/ID when retrying an uncertain network result. Do not automatically retry a stale revision with a new revision number. Existing revision and command-conflict safeguards return 409.
+
+Boundary protections: exact configured Host, loopback peer, same-origin checks, rejection of cross-site/same-site Fetch Metadata, required Origin plus custom header for POST, JSON-only mutations, maximum 65,536 body bytes, strict field allowlists, duplicate-key/invalid-Unicode rejection and no CORS allowance. These stop cross-origin browser actions but are not authorization against other local processes/users. Responses use no-store, nosniff, same-origin resource policy, frame denial and restrictive CSP. The workstation renders untrusted strings with textContent/createTextNode, including raw provider JSON; it never inserts them as HTML. CSP permits only same-origin scripts, styles and Fetch connections, with no inline scripts, remote assets or frames.
+
+Only `/`, `/assets/workstation.css` and `/assets/workstation.js` serve fixed allowlisted assets. Request paths are never joined to filesystem paths. No image bytes, CSV, database, source modules, directory listing or evaluation/results.json are served. Evidence references are literal provenance strings, never fetchable image URLs supplied by this adapter.
+
+All errors use `{"error":{"code":"...","message":"..."}}`: 400 malformed/unsupported fields or query, 403 local/origin boundary rejection, 404 unavailable scoped resource, 405 unsupported method, 409 review conflict, 413 excessive body, 415 unsupported media type, 422 existing domain validation failure, 500 unexpected internal error. Errors do not echo exception text, SQL, stack traces or server paths. A 500/network failure after an attempted write should be reconciled by retrying the same command or reading history, not assuming success or failure.
+
+### Workstation and sample demonstration
+
+The single-page workstation uses plain HTML/CSS/JavaScript and Fetch, without npm or a build step. It contains a filtered review queue, return metadata, expected/observed identity, component comparison, physical observations, evidence lineage, uncertainty reasons, supported human decisions and expandable audit history. Loading a new case clears the previous case's panels. Errors offer safe retries; empty queues say "No review cases in this scope."
+
+The Reopened filter uses an adapter-derived flag from actual scoped history: the case is in_review and its latest status-changing event came from reviewed. This is not a new workflow status or business decision. Saving within that reopened state preserves the flag. Identity/completeness human assertions remain separate from original automated results. Unknown/not-visible components never become missing merely because an observation is absent.
+
+For an explicit sample demonstration, run this once from the participant directory before starting the server above. This imports only the unchanged alpha sample rows and routes their existing missing-evidence assessments. It does not invoke vision, create photographs or seed human review decisions. Repeating it preserves existing cases/history.
+
+```powershell
+$env:PYTHONPATH = Join-Path (Get-Location) 'agent'
+@'
+from pathlib import Path
+from returns_manager.domain import TenantContext
+from returns_manager.storage import Store
+from returns_manager.service import ingest
+from returns_manager.validation import read_csv
+from returns_manager.review_storage import ReviewWorkflow
+
+Path("runtime").mkdir(exist_ok=True)
+context = TenantContext("org_demo_alpha")
+with Store(Path("runtime/returns.sqlite3"), context) as store:
+    workflow = ReviewWorkflow(store)
+    for row, source in read_csv(Path("../../data/returns_sample.csv")):
+        if row["org_id"] == context.organization_id:
+            ingest(row, source, store)
+            workflow.route(row["record_id"], row["unit_id"])
+'@ | python -B -
+```
+
+Demo flow: select a return; inspect expected identity, unknown components and unavailable physical observations; follow evidence references and source lineage; read the explicit review reasons; open Review actions; start review with a legitimate explanation; record only supported assertions; inspect the updated revision and audit history. A reviewed case still shows business disposition pending review. Every reference is visibly synthetic/unverified; unavailable image bytes are represented by text placeholders, not photographs. Actual provider JSON, if stored, appears as escaped text. Conflicting observations are retained independently.
+
+Every mutation requires a reason, uses the server-configured reviewer and submits the current revision plus a once-generated command ID. Available transitions come from the backend. Decisive identity/completeness assertions require existing usable citations; no condition/disposition overrides exist. Duplicate clicks are disabled during saving. A stale revision reloads current detail/history, retains the explanation and requires deliberate reselection before resubmission. A timeout/network/5xx outcome locks the pending body and offers Retry same action with its original command ID. Pending bodies/drafts are kept in page memory only: keep the page open while reconciling an uncertain save; after a reload, check history before starting a new action.
+
+Semantic controls, labelled inputs, a native modal dialog, visible keyboard focus, a skip link and live status/error announcements support keyboard use. The sidebar/panels stack on narrow screens and wide tables scroll within their container. This is not a formal accessibility certification. The local server has no production authentication, image-serving/upload facility, real provider or finalized grading/disposition policy.
+
 ## Engineering test result
+
+Phase 5B final: **197 passed, 355 subtests passed in 8.57s; 0 failures, 0 errors, 0 warnings**. Baseline was 192 passed / 348 subtests in 8.96s. All 192 prior tests remain; five adapter regressions cover trusted context, static/CSP boundaries, reopened history derivation, scope isolation and read-only GET behavior. Actual browser smoke covered selection, unavailable evidence, required reasons, successful review/history refresh, stale-revision draft preservation and retry after a deliberate server interruption. Desktop 1440px and narrow 390px checks showed no horizontal page overflow. These are engineering checks, not real visual inference or benchmark results.
+
+Phase 5A: **192 passed, 348 subtests passed in 10.40s; 0 failures, 0 errors, 0 warnings**. All previous 163 tests remain unchanged; 29 adapter tests were added. The suite includes real ephemeral loopback HTTP checks for the shell, health, scoped queue/detail/history and review transition; all returned 200 for valid requests. No external provider or production identity was used.
 
 Phase 4 final suite: **163 passed, 263 subtests passed in 10.42s; 0 failures, 0 errors, 0 warnings** on Python 3.13.4/pytest 9.1.1. The previous 143 tests are unchanged; 20 new tests cover the harness. These timings are test-runner durations, not provider telemetry.
 
@@ -189,7 +276,7 @@ The template lists README.md, 01-customer-letter.md, 02-prfaq.md, 03-one-pager.m
 - Face 2, CLAUDE.md: not created.
 - Face 3, headless agent on fixtures: Phase 1 foundation, Phase 2 fixture observation pipeline and Phase 3 backend review workflow; no real model inference or decisive grading.
 - Face 4, evaluation report: Phase 4 engineering report executed; all ten genuine visual scenarios blocked. Separate unseen-unit benchmarking remains outstanding.
-- Face 5, evidence record page: concept only.
+- Face 5, evidence record page: Phase 5B local workstation with lineage, unavailable evidence, observations and review history; genuine image display is unavailable.
 - Face 6, cross-pod contract: template conflict; use official organiser contract for Round 2.
 
 ## Kill condition
