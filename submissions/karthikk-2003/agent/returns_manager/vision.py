@@ -1,4 +1,4 @@
-"""Image/provider boundary. Only FixtureProvider is implemented; no real API calls."""
+"""Image/provider boundary; optional real adapters are explicitly supplied by callers."""
 
 import hashlib
 import io

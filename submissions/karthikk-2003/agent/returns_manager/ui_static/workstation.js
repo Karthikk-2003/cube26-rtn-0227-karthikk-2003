@@ -13,9 +13,9 @@
   const unavailable = text => el('p', text, 'unavailable');
   function notice(message, error = false) { $('notice').textContent = message; $('notice').className = 'notice' + (error ? ' error' : ''); }
   function errorBox(parent, message, retry) { parent.replaceChildren(el('p', message, 'error-box'), button('Retry', retry)); }
-  async function api(path, body) {
+  async function api(path, body, timeoutMs = 12000) {
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 12000);
+    const timeout = setTimeout(() => controller.abort(), timeoutMs);
     try {
       const options = {signal: controller.signal, cache: 'no-store', credentials: 'same-origin'};
       if (body) Object.assign(options, {method: 'POST', headers: {'Content-Type': 'application/json', 'X-Returns-Request': '1'}, body: JSON.stringify(body)});
@@ -102,6 +102,8 @@
   function resultLines(dimension) {
     const d = state.detail, box = el('div', null, 'result-line');
     box.append(el('p', `Automated result: ${d.automated_assessment?.[dimension]?.verdict ?? 'Unavailable'}`));
+    const automated = d.automated_assessment?.[dimension];
+    if (automated) box.append(el('p', (automated.reasons || []).map(pretty).join(' · ')), citations(automated.evidence || []));
     const human = d.human_decisions[dimension];
     box.append(el('p', human ? `Human assertion: ${human.verdict} · ${human.reviewer_id} · revision ${human.revision}` : 'Human assertion: Not recorded'));
     if (human) box.append(el('p', human.reason), citations(human.evidence_refs));
@@ -109,6 +111,7 @@
   }
   function renderDetail() {
     const d = state.detail, c = d.capture, batch = d.observations;
+    const reference = d.automated_assessment?.decision_reference;
     $('return-title').textContent = c.unit.unit_id;
     $('return-meta').replaceChildren(...[
       ['Record', d.record_id], ['Organization', d.organization_id], ['Order', c.order.order_id],
@@ -116,9 +119,11 @@
     ].map(([k,v]) => datum(k,v)));
     const row = state.queueReady ? state.queue.find(r => r.review_id === d.review_id && r.revision === d.revision) : null;
     $('return-status').replaceChildren(badge('Workflow: ' + workflowLabel({...d, reopened: row?.reopened || false}), 'warning'), el('strong', 'Business disposition: ' + pretty(d.business_status)));
-    $('provenance-banner').textContent = `${pretty(c.reference.status)}. Reference data is synthetic and unverified. ${batch?.provider_mode === 'fixture' ? 'Fixture-only observations; no real image inference.' : 'No genuine visual inspection is claimed.'}`;
+    const telemetry = d.raw_response;
+    const providerLabel = batch?.provider_name === 'gemini' ? 'Gemini · LIVE' : batch?.provider_name === 'ollama' ? 'Ollama · LOCAL' : 'Fixture · TEST ONLY';
+    $('provenance-banner').textContent = `${reference?.reference_status === 'synthetic_demo' ? 'DEMO / SYNTHETIC REFERENCE DATA. Not a verified real catalogue.' : reference ? 'Order/catalogue reference attested by ' + reference.verified_by + '; source snapshot retained.' : 'Reference context is synthetic and unverified.'} ${batch ? providerLabel : 'No validated visual observations.'} ${telemetry?.model_version || ''} ${telemetry?.latency_ms != null ? '· Measured latency: ' + (telemetry.latency_ms / 1000).toFixed(2) + 's' : ''}. Model observations are not verified facts or business decisions.`;
     const expected = el('div'), observed = el('div'), compare = el('div', null, 'comparison');
-    expected.append(el('p', 'EXPECTED', 'column-label'), badge('Synthetic reference context'), datum('SKU', c.order.ordered_sku), datum('ASIN', c.order.ordered_asin));
+    expected.append(el('p', 'EXPECTED', 'column-label'), badge(reference?.reference_status === 'synthetic_demo' ? 'DEMO / SYNTHETIC REFERENCE DATA' : reference ? 'Attested order/catalogue context' : 'Synthetic reference context'), datum('SKU', c.order.ordered_sku), datum('ASIN', c.order.ordered_asin));
     observed.append(el('p', 'OBSERVED', 'column-label'));
     if (!batch?.identity.length) observed.append(unavailable('Not observed / unavailable'));
     for (const o of batch?.identity || []) {
@@ -132,11 +137,14 @@
       const n = el('div', null, 'observation'); n.append(el('strong', `${pretty(o.feature)} · ${pretty(o.state)}`), el('p', o.description || 'No description supplied'), el('p', o.limitations.join(' · '), 'caption'), citations(o.evidence_refs)); cb.append(n);
     }
     cb.append(datum('Condition grade', d.automated_assessment?.condition?.grade ?? 'Not assigned'), el('p', 'Insufficient evidence or unresolved policy.', 'caption'), resultLines('condition'));
+    if (d.automated_assessment?.condition?.policy_source) cb.append(
+      datum('Condition definition source', d.automated_assessment.condition.policy_source),
+      el('p', 'Amazon condition guidance requires category-specific and nonvisual checks. Photographs alone do not establish a final grade. No grade-to-disposition mapping has been supplied.', 'caption'));
     const comp = $('completeness-body'); comp.replaceChildren(el('p', 'UNKNOWN ≠ MISSING · NOT VISIBLE ≠ MISSING', 'caption'));
     const table = el('table'), head = el('thead'), hr = el('tr');
     for (const title of ['Expected component', 'Expected qty', 'Observed qty', 'Presence / visibility', 'Evidence']) hr.append(el('th', title));
     head.append(hr); table.append(head); const tbody = el('tbody');
-    const components = c.reference.components;
+    const components = reference?.components || c.reference.components;
     const names = [...new Set([...components.map(x => x.name), ...(batch?.components || []).map(x => x.component)])];
     for (const name of names) {
       const expectedPart = components.find(x => x.name === name);
@@ -153,15 +161,24 @@
     }
     table.append(tbody); const wrap = el('div', null, 'table-wrap'); wrap.append(table);
     comp.append(names.length ? wrap : unavailable('Expected components unavailable'), resultLines('completeness'));
+    const completeness = d.automated_assessment?.completeness;
+    if (completeness) comp.append(datum('Confirmed missing components', completeness.missing_components.join(', ') || 'None established'),
+      datum('Unresolved components', completeness.unknown_components.join(', ') || 'None listed'));
     renderEvidence(); renderUncertainty();
     $('open-review').disabled = !state.context || !d.allowed_transitions.length;
   }
   function renderEvidence() {
     const d = state.detail, body = $('evidence-body'), grid = el('div', null, 'evidence-grid');
-    body.replaceChildren(el('p', 'References are provenance, not image links. Image bytes are not served by this application.', 'caption'));
+    body.replaceChildren(el('p', 'Only configured demo images with matching persisted hashes can be displayed. Demo images are not benchmark data.', 'caption'));
     d.evidence.forEach((e,i) => {
       const card = el('article', null, 'evidence-card'); card.id = 'evidence-' + i; card.tabIndex = -1;
       const empty = el('div', null, 'image-unavailable'); empty.append(el('strong', 'IMAGE UNAVAILABLE'), el('span', e.availability === 'fixture_only' ? 'Fixture metadata only' : e.availability === 'available' ? 'Bytes not served by this UI' : 'No inspectable image supplied'));
+      if (e.availability === 'available' && e.kind === 'genuine') {
+        const image = el('img'); image.alt = 'Configured demo evidence ' + e.evidence_id;
+        image.src = `/api/reviews/${d.review_id}/images/${i}`; image.className = 'demo-evidence-image';
+        image.addEventListener('error', () => image.replaceWith(unavailable('Image unavailable or no longer matches its recorded hash.')));
+        empty.replaceChildren(image);
+      }
       card.append(empty, datum('Evidence ID', e.evidence_id || 'Not assigned'), datum('Reference', e.reference), datum('Availability', e.availability), datum('Type / designation', [e.image_role, e.kind].filter(Boolean).join(' / ') || 'Capture reference · synthetic placeholder'), datum('Source / reason', e.reason || e.source_relationship), datum('SHA-256', e.sha256 || 'Not available'));
       const related = [];
       for (const key of ['identity','components','condition']) for (const o of d.observations?.[key] || []) if (o.evidence_refs.includes(e.evidence_id)) related.push(`${key}: ${o.field || o.component || o.feature}`);
@@ -172,6 +189,12 @@
     body.append(datum('Source lineage', `${source.source_name} · row ${source.row_number} · ${source.kind}`), datum('Source SHA-256', source.source_sha256), datum('Observation source', d.source_key));
     const raw = el('details'); raw.append(el('summary', 'Raw provider response'), el('pre', d.raw_response ? JSON.stringify(d.raw_response, null, 2) : 'No accepted raw provider response available.'));
     body.append(raw);
+    const reference = d.automated_assessment?.decision_reference;
+    if (reference) {
+      const sourceDetail = el('details'); sourceDetail.append(el('summary', reference.reference_status === 'synthetic_demo' ? 'DEMO / SYNTHETIC reference snapshot and image hash' : 'Order/catalogue attestation and source snapshot'),
+        el('pre', JSON.stringify(reference, null, 2)));
+      body.append(datum('Decision rule version', d.automated_assessment.rule_version), sourceDetail);
+    }
   }
   function renderUncertainty() {
     const d = state.detail, box = $('uncertainty-body'), reasons = el('ul', null, 'reason-list');
@@ -179,7 +202,7 @@
     const conflicts = d.observations?.conflicts || [];
     const grid = el('div', null, 'review-grid');
     for (const [title, value] of [
-      ['What is known', 'Order and source context are preserved. Reference context remains unverified.'],
+      ['What is known', d.automated_assessment?.decision_reference?.reference_status === 'synthetic_demo' ? 'Synthetic demo expectations only; real product identity and accessories are unverified.' : d.automated_assessment?.decision_reference ? 'Order/catalogue attestation and exact source snapshot are preserved. Attestation is not independent proof of truth.' : 'Order and source context are preserved. Reference context remains unverified.'],
       ['What is unknown', d.unresolved_decisions.join(', ') || 'See recorded review reasons.'],
       ['What is conflicting', conflicts.length ? conflicts.join(' · ') : 'No validated conflicts recorded. This does not establish agreement.']
     ]) { const n = el('div'); n.append(el('h3', title), el('p', value)); grid.append(n); }
@@ -287,13 +310,33 @@
     try {
       const [context] = await Promise.all([api('/api/context'), api('/health')]);
       state.context = context;
+      if (context.demo_case) notice('DEMO / SYNTHETIC REFERENCE DATA · ' + context.demo_case + ' · not customer data or benchmark ground truth.');
       $('organization').textContent = context.organization_id + (context.client_id === null ? ' · Client not supplied' : ' · ' + context.client_id);
       $('reviewer').textContent = 'Reviewer: ' + context.reviewer_id;
+      $('ai-provider').textContent = 'AI provider: ' + (context.ai_provider === 'gemini' ? 'Gemini · LIVE' : context.ai_provider === 'ollama' ? 'Ollama · LOCAL' : context.ai_provider === 'fixture' ? 'Fixture · TEST ONLY' : 'disabled');
+      $('run-demo').disabled = !context.demo_enabled;
       $('system-status').textContent = 'Connected · local adapter';
     } catch (err) { $('system-status').textContent = 'Connection unavailable'; notice('Could not establish trusted server context. Use Refresh to retry. ' + err.message, true); }
     await loadQueue();
   }
   $('queue-filter').addEventListener('change', renderQueue);
+  let demoCommand = null;
+  $('run-demo').addEventListener('click', async () => {
+    if (!state.context?.demo_enabled) return;
+    const control = $('run-demo'); control.disabled = true;
+    demoCommand = demoCommand || crypto.randomUUID();
+    $('demo-progress').textContent = state.context.ai_provider === 'gemini'
+      ? 'Inspecting configured images. Temporary Gemini HTTP failures may retry twice at most; no provider fallback. Please wait…'
+      : 'Inspecting configured images. No fallback or automatic retry. Please wait…';
+    try {
+      const result = await api('/api/demo/inspect', {command_id: demoCommand}, 650000);
+      demoCommand = null;
+      $('demo-progress').textContent = result.reused ? 'Existing attempt recovered.' : result.status === 'validated' ? 'Validated observations recorded; review required.' : `Inspection unavailable: ${result.diagnostic || result.error_code}. Review case recorded.`;
+      await loadQueue(); await selectCase(result.review_id);
+    } catch (err) {
+      $('demo-progress').textContent = 'Outcome unconfirmed. Refresh the queue before retrying the same attempt. ' + err.message;
+    } finally { control.disabled = false; }
+  });
   $('refresh').addEventListener('click', async () => { if (!state.context) await bootstrap(); else { await loadQueue(); if (state.selected) await selectCase(state.selected); } });
   $('queue-list').addEventListener('keydown', event => {
     const rows = [...$('queue-list').querySelectorAll('button')], i = rows.indexOf(document.activeElement);

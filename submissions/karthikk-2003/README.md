@@ -2,12 +2,105 @@
 
 Participant: Karthik Karunakaran (@Karthikk-2003, supplied handoff).
 
-Status: Phase 1 foundation, Phase 2 observation layer, Phase 3 backend evidence/review workflow, Phase 4 engineering evaluation foundation, Phase 5A local WSGI adapter and Phase 5B browser inspection workstation implemented. Visual benchmarking remains blocked by missing genuine evidence, authoritative labels and policies. No real multimodal API call, authoritative grading/disposition policy, official wire-contract implementation or public deployment exists.
+Status: Phases 1-5, optional Ollama and Gemini observation providers, and an explicit image-to-review demo workflow are implemented. Offline tests cover the integrations. Live Gemini attempts on 2026-09-30 did not produce accepted observations: the diagnostic request returned HTTP 503 (model overload). Live AI presentation readiness is not established. Visual benchmarking, authoritative grading/disposition policies, the official wire contract and public deployment remain outstanding.
+
+## One synthetic headphones reference case (2026-09-30)
+
+The [headphones package and launch instructions](demo/README.md) bind the existing authorized local image to an explicitly **DEMO / SYNTHETIC REFERENCE DATA** order and parts list. Use the existing fixture UI command with `--demo-case headphones` and `--database runtime/headphones-fixture.sqlite3`. The image remains local and unchanged. The package hash verifies its bytes, not real product identity.
+
+The existing DecisionReference now records `reference_status`: `operator_attested` by default for the prior library path, or `synthetic_demo` for this package. Synthetic references cannot produce decisive automated identity/completeness results even with a real provider. The fixture result has no invented observations, missing accessories, model telemetry or condition grade; disposition remains pending_review. Package verification identity/time, source snapshot/hash and review history use the existing storage contract. This is ready for a later authorized image-to-observation Gemini test, not a benchmark or verified real catalogue case.
+
+Verification: **286 passed, 2 skipped, 427 subtests; 0 failures/errors**. Nine new local-photo tests use FixtureProvider and offline preparation; no Gemini/Ollama requests. These nine tests explicitly skip when the ignored authorized image or Pillow is absent. Full setup and expected results are in the package README.
+
+## Source-backed policy extension (2026-09-30)
+
+[Architecture and policy resolution](ARCHITECTURE.md) records the official challenge/handbook requirements, repository clarification, Verity context and narrowly researched Amazon guidance. The optional trusted `DecisionReference` now enables exact identity matching and evidence-backed completeness checks through the existing `assess` / `inspect_capture` pipeline. It is scoped to organization/client/record/unit/order and preserves the verifier, source snapshot and calculated digest. Existing synthetic CSV/default demo inputs are never automatically promoted into trusted references.
+
+With genuine validated observations and a verified reference, identity/completeness can return PASS or FAIL with citations. Full-coverage absence can identify one or multiple missing parts; unknown/occluded evidence and partial counts remain uncertain. Fixture output cannot release these checks. The UI exposes the reference snapshot, rule version, per-check reasons/citations, missing components and unresolved components. Reference ingestion is a trusted library argument, not a new browser form; see the architecture document for its exact signature and prerequisites.
+
+The Amazon condition source is identified, but applicable category/marketplace definitions and required nonvisual checks are not established for the supplied demo. Condition remains UNCERTAIN with grade null and physical-observation citations. No complete authoritative customer disposition rules were supplied; restock/refurbish/liquidate/dispose are allowed vocabulary, not an invented decision table. pending_review remains the automated outcome. A missing cable in the challenge example does not establish a universal refurbish rule.
+
+Verification: **277 passed, 2 skipped, 427 subtests; 0 failures/errors/warnings**. Added 27 offline policy tests; no live API requests.
+
+All older phase sections below describe their original scope; this extension supersedes statements that identity/completeness are universally scaffolding. No provider, UI transport or evaluation architecture was replaced. No real visual benchmark or live inference is claimed for this extension.
+
+## Gemini demo workflow (2026-09-30)
+
+The existing flow remains: prepared genuine image bytes -> explicitly selected VisionProvider -> raw response -> existing observation validation -> deterministic assessment -> persisted review/history. Gemini is a proposed primary live-demo provider; Ollama remains local/offline and FixtureProvider remains deterministic/test-only. No automatic provider fallback, model downloads, billing changes or business decisions were added. Gemini retries only explicit HTTP 429/500/502/503/504 responses, at most twice (three HTTP attempts per inspection); other failures are not automatically retried.
+
+`gemini-3.8-flash` is the default configured candidate. Official [model documentation](https://ai.google.dev/gemini-api/docs/models/gemini-3.8-flash) lists image input and structured output; [pricing](https://ai.google.dev/gemini-api/docs/pricing) lists standard Free-tier input/output. Authenticated model discovery listed it. The user's AI Studio screenshot showed the matching project on Free tier with Set up billing. Model discovery alone does not verify billing. Numeric quotas are project-specific; inspect [active rate limits](https://ai.google.dev/gemini-api/docs/rate-limits) in AI Studio. Free-tier content may be used to improve Google's products: use non-sensitive demo photos only.
+
+No new dependencies were added. The existing optional Pillow decoder in `requirements-images.txt` is needed for genuine JPEG/PNG inputs. REST uses the documented [generateContent endpoint](https://ai.google.dev/api/generate-content), the `x-goog-api-key` header and JSON-schema output. Images are inline base64; no file-upload service, tools, search or grounding is used. The application validator retains all length, scope, evidence, uncertainty and observation-only checks. Latency is measured client-side around the provider transport, including any retry delays; returned model/version, response ID and total token usage are retained only when supplied. Rejected raw responses are discarded by the existing safety contract.
+
+From this participant directory, in PowerShell:
+
+```powershell
+$env:PYTHONPATH = Join-Path (Get-Location) 'agent'
+$env:GEMINI_API_KEY = [Environment]::GetEnvironmentVariable('GEMINI_API_KEY', 'User')
+$env:GEMINI_MODEL = 'gemini-3.8-flash'
+$env:GEMINI_TIMEOUT_SECONDS = '90'
+# Set only after confirming this key's project is Free tier, without billing.
+$env:GEMINI_FREE_TIER_CONFIRMED = '1'
+python -B -m returns_manager.ui --organization org_demo_alpha --reviewer karthikk-2003 --provider gemini --demo-image runtime/demo-images/headphones_smoke.png.png --database runtime/gemini-demo.sqlite3 --port 8000
+```
+
+The actual supplied filename has two `.png` suffixes. Open `http://127.0.0.1:8000/`. Inspect existing cases without invoking AI. The explicit **Inspect configured demo images** button sends one application request, persists its accepted observations or unavailable state, and opens the review case. Gemini transport may make up to three bounded HTTP attempts for transient failures; the browser never automatically repeats the inspection. Never click repeatedly to overcome quota/overload. A completed command can be retried with the same command ID without another inference; an interrupted persisted capture requires investigation rather than an automatic retry. The local server is single-process/synchronous and may be busy during inference. This is not production authentication or a background job service.
+
+Only one to four launch-configured participant-local JPEG/PNG files can be used; browsers cannot choose arbitrary disk paths, providers or tenants. Display routes resolve scoped review evidence and verify the persisted SHA-256 against allowlisted bytes. Changed/unavailable images are not displayed. The demo records use new `DEMO-` record/unit IDs and explicitly synthetic unknown order/SKU/ASIN context, with the configured organization/reviewer and no invented client. Photos are genuine but are not benchmark data. The UI shows separate AI observations, model/latency when available, deterministic uncertainty, unassigned condition grade, pending-review disposition and attributed human history.
+
+To switch, restart with `--provider ollama` or `--provider fixture`; use a separate demo database if desired. Ollama retains its existing `OLLAMA_*` configuration and may cold-start slowly. Fixture mode returns labelled empty synthetic observations with limitations, never visual claims. Default `--provider disabled` performs no inference. Gemini models currently permitted by the adapter are the documented Free-tier candidates `gemini-3.8-flash`, `gemini-3.7-flash`, `gemini-3.6-flash`, `gemini-3.5-flash`; configuration is explicit and availability is not guaranteed. `GEMINI_FREE_TIER_CONFIRMED` is a local operator confirmation, not an API billing attestation or protection against later account changes.
+
+Offline verification (no live API calls):
+
+```powershell
+$env:PYTEST_ADDOPTS = '-p no:cacheprovider'
+$env:PYTHONDONTWRITEBYTECODE = '1'
+$env:GEMINI_LIVE_TEST = '0'
+$env:OLLAMA_LIVE_TEST = '0'
+python -B -m pytest tests/ -v
+```
+
+Optional one-inspection structural smoke (up to three HTTP attempts), after checking Free tier/quota and only when a live call is explicitly authorized. Further live Gemini requests are currently paused by the user:
+
+```powershell
+$env:GEMINI_LIVE_TEST = '1'
+$env:GEMINI_LIVE_IMAGE = Join-Path (Get-Location) 'runtime/demo-images/headphones_smoke.png.png'
+python -B -m pytest tests/test_gemini_live.py -v -s
+Remove-Item Env:GEMINI_LIVE_TEST
+```
+
+The opt-in test skips without a key, image setting or Free-tier confirmation. A provider failure with those prerequisites present fails visibly; it does not become a fake pass. Do not run it merely to replay the existing demo. On 2026-09-30 three live image requests were attempted: two with 3.8 Flash (second for bounded error diagnosis, HTTP 503 high demand) and one explicit alternate 3.7 Flash attempt (generic HTTP failure). None yielded validated observations; no successful-inference latency, accuracy or 50-unit evaluation is claimed. The ignored demo database preserves the three unavailable review cases. Numeric active quota information was unavailable through model metadata; no quota-exhaustion probes were performed.
 
 This index is adapted from [submissions/_TEMPLATE/README.md](../_TEMPLATE/README.md), which requests a participant README. Current [RULES](../../RULES.md) and [GitHub guide](../../GITHUB-GUIDE.md) instead describe an own-fork workflow without requiring participant folders or organiser PRs. This directory follows the user's requested boundary and is compatible with the retained guard's path rule; it does not imply a PR is required.
 
+## Offline/local readiness check (2026-09-30)
+
+Current regression result: **250 passed, 2 skipped, 427 subtests passed; 0 failures/errors**. Both live-provider tests were disabled. Nine new regressions exercise bounded retries, elapsed-budget exhaustion, explicit provider switching, 503 review routing without fallback or duplicate inference, complete fixture review/history, mocked Ollama persistence/latency, and unchanged application array limits. No Gemini API requests were made during this offline/local continuation.
+
+Gemini retry delays use exponential jitter (0.5–1 seconds, then 1–2 seconds), with at most two retries. Numeric `Retry-After` values up to 30 seconds are respected; longer, invalid or unsupported values stop retries. Remaining timeout budget is checked before each attempt and sleep. The socket timeout bounds blocking operations, not a hard total deadline against a trickling response. Exhaustion produces `provider_unavailable` with sanitized `gemini_overloaded` or `gemini_rate_limited` diagnostics; no accepted observations, latency, grade or business disposition is fabricated. Authentication errors, ambiguous network failures and timeouts are not retried. There is no provider fallback.
+
+Fixture inspection through review/history is verified with offline application tests. Start it from this participant directory:
+
+```powershell
+$env:PYTHONPATH = Join-Path (Get-Location) 'agent'
+python -B -m returns_manager.ui --organization org_demo_alpha --reviewer karthikk-2003 --provider fixture --demo-image runtime/demo-images/headphones_smoke.png.png --database runtime/fixture-demo.sqlite3 --port 8000
+```
+
+Click **Inspect configured demo images** to create a labelled fixture review case. Fixture mode intentionally produces no visual findings, real-image evidence or inference latency. It demonstrates the workflow, not AI quality. Review can be completed with an attributed UNCERTAIN assertion; business status remains pending review.
+
+Use the same workflow with local Ollama by stopping this UI server and starting:
+
+```powershell
+python -B -m returns_manager.ui --organization org_demo_alpha --reviewer karthikk-2003 --provider ollama --demo-image runtime/demo-images/headphones_smoke.png.png --database runtime/ollama-demo.sqlite3 --port 8000
+```
+
+Ollama selection, request/validation/persistence, image serving and returned latency are covered with explicitly mocked tests. Actual local inference is **not ready on the tested machine**: the service returned HTTP 500 reporting 6.9 GiB required versus 5.0 GiB available. A separate in-memory diagnostic using request `num_batch=64` reached the 240-second timeout with no accepted observations; this experimental setting was not adopted. No Ollama service lifecycle or OS memory settings were changed. The unavailable attempt remains reviewable in `runtime/ollama-demo.sqlite3`. Free sufficient local memory before another deliberate local test; success is not guaranteed by a higher timeout.
+
+Source and API checks confirm configured provider/mode, accepted latency when present, unavailable evidence and pending-review rendering. Browser visual verification was blocked by browser permission policy; no fresh visual pass is claimed. A successful Gemini request is still needed to establish actual Gemini schema compatibility, accepted grounded observations and successful-inference latency. Official visual accuracy and the 50-unit evaluation remain separate uncompleted work.
+
 ## Current documentation
 
+- [Architecture and policy](ARCHITECTURE.md): current flow, reference integration, source findings and unresolved policy.
 - [Build brief](build-brief.md): source-backed repository findings, proposed architecture, data/evidence contract, evaluation methodology, roadmap and open questions.
 - [Build log](build-log.md): audit, implementation history and actual engineering test results.
 - [Evaluation contract/discovery](evaluation/README.md) and [executed JSON report](evaluation/results.json): reproducible engineering checks and explicitly blocked visual scenarios.
@@ -16,13 +109,15 @@ This index is adapted from [submissions/_TEMPLATE/README.md](../_TEMPLATE/README
 
 - `agent/returns_manager/domain.py`: immutable internal tenant, unit, order, reference, capture, observation placeholder and separate result types.
 - `agent/returns_manager/validation.py`: strict synthetic CSV adapter, source digest/row lineage and input/reference checks.
-- `agent/returns_manager/rules.py`: pure missing-evidence rule scaffolding; no model calls or business-policy mappings.
+- `agent/returns_manager/rules.py`: pure scoped identity/completeness checks with optional attested references; conservative missing-evidence behavior and no guessed disposition mappings.
 - `agent/returns_manager/storage.py`: tenant-bound SQLite capture/result persistence and scoped record/unit/evidence-reference lookups.
 - `agent/returns_manager/service.py`: persist capture before assessment, preserve failures, resume unfinished ingestion and reject conflicting duplicates.
 - `agent/returns_manager/__main__.py` and `__init__.py`: local CLI and package entry.
 - `tests/test_foundation.py`: explicitly synthetic engineering tests; no image generation or model output fixtures.
 - `agent/returns_manager/observations.py`: observation dataclasses, strict raw JSON parser, evidence/scope validation and conflict detection.
 - `agent/returns_manager/vision.py`: image-input boundary, provider protocol, fixture replay provider and failure-safe observation pipeline.
+- `agent/returns_manager/ollama.py`: opt-in loopback HTTP observation provider using the existing internal contract.
+- `tests/test_ollama.py` and `test_ollama_live.py`: isolated mocked integration tests and an explicitly opt-in live smoke test.
 - `tests/test_vision.py`: synthetic observation/metadata fixtures, provider failures, isolation and integration tests.
 - `agent/returns_manager/review.py`: internal human decision contracts and pure deterministic uncertainty routing.
 - `agent/returns_manager/review_storage.py`: scoped evidence view, retry-safe review cases and append-only review events over an existing Store.
@@ -74,7 +169,7 @@ Flow: capture-bound image inputs -> VisionProvider -> raw ProviderResponse -> st
 
 The public integration entry is `service.inspect_capture(row, source, store, images, provider=None)`. It validates the row against the Store's trusted tenant context and preserves the capture before processing. `images` is a tuple of `vision.ImageInput` values bound to the capture's organization/client, unit_id and record_id through `ObservationScope.from_capture(capture)`. Callers supply image_id, evidence_id, capture photo reference, image role and source kind. IDs are not generated from model assertions. Each reference must already belong to that capture. Returned-product and returned-packaging image roles are supported; the validated relationship is `capture_photo_ref`.
 
-`VisionProvider.observe(VisionRequest)` receives one batch containing image descriptors, any validated image bytes and expected component names. It does not receive CSV identity/disposition/condition history. It must return a ProviderResponse containing raw JSON plus actual provider metadata where available. No real adapter is configured or implemented. A future real adapter must enforce its own network timeout, translate its response into the internal observation JSON contract, keep image contents as data rather than instructions, and provide real metadata or null. No API credentials are required or used in this implementation.
+`VisionProvider.observe(VisionRequest)` receives one batch containing image descriptors, any validated image bytes and expected component names. It does not receive CSV identity/disposition/condition history. It must return a ProviderResponse containing raw JSON plus actual provider metadata where available. Phase 6 adds an explicitly selected Ollama adapter; no real provider is enabled by default. Adapters must enforce their network timeout, keep image contents as data rather than instructions, and provide real metadata or null. No API credentials are required or used in this implementation.
 
 `FixtureProvider(response_text)` replays **explicitly supplied synthetic test JSON**, with provider name `fixture-json` and mode `fixture`. It performs no inference, cannot claim model/request/token/latency metadata, and only accepts metadata inputs labelled `kind="fixture"`. Such evidence is `fixture_only`, never a claim that genuine images were inspected. Test assertions and fixture IDs in `tests/test_vision.py` are not product evidence or model outputs. No fake image files were created.
 
@@ -108,7 +203,71 @@ Audit fixes reject invalid Unicode scalars in raw response text, decoded observa
 
 `Store.vision_attempts(record_id)` returns attempts only inside its bound organization/client scope. Each saved run is revalidated against its capture, raw response and deterministic assessment. The additive `vision_attempts` table works with existing Phase 1 databases without replacing captures or prior assessments. A local database-generated attempt_id identifies an attempt; it is not a provider request ID or a replacement for record_id/unit_id. Explicit repeat inspection calls append attempts, including failures; they are not silently cached or auto-retried. The original `ingest()` retains Phase 1 idempotency.
 
-The library boundary still trusts the authenticated-context supplier and image registration caller; authentication and image ownership resolution must be provided by a future application. Parser validation establishes structure and declared provenance, not the truth of model assertions. Test success is not visual accuracy. Real vision calls, official wire export, business policy, deployment and genuine visual benchmarking remain unimplemented. Phase 5B exposes the supported human review actions in the local browser.
+The library boundary still trusts the authenticated-context supplier and image registration caller; authentication and image ownership resolution must be provided by a future application. Parser validation establishes structure and declared provenance, not the truth of model assertions. Test success is not visual accuracy. Official wire export, business policy, deployment and genuine visual benchmarking remain unimplemented. Phase 5B exposes the supported human review actions in the local browser; Phase 6 enables optional library-level Ollama calls.
+
+## Phase 6 optional local Ollama observations
+
+`OllamaVisionProvider` implements the existing `VisionProvider` protocol. It uses the already-running local Ollama HTTP service; it never starts/stops Ollama, pulls models, calls a paid service, or needs an API key. The supplied setup is Ollama with locally installed `qwen2.5vl:3b`. The operator reported approximately 168 seconds cold and 12 seconds warm inference; these are supplied setup observations, not measurements or performance claims from this integration.
+
+From this participant directory, configure the calling Python process:
+
+```powershell
+$env:PYTHONPATH = Join-Path (Get-Location) 'agent'
+$env:OLLAMA_BASE_URL = 'http://localhost:11434'
+$env:OLLAMA_MODEL = 'qwen2.5vl:3b'
+$env:OLLAMA_TIMEOUT_SECONDS = '240'
+```
+
+These values are also the defaults. `OllamaConfig.from_env()` reads them when constructing a provider. Timeout must be finite and positive, with an implementation ceiling of 86,400 seconds. It is the HTTP socket-operation timeout, not a total wall-clock deadline. Allow for the reported cold start. Invalid configuration is rejected before a request. Explicit `OllamaConfig(...)` is also supported. Only loopback HTTP bases without credentials, paths or queries are accepted. `localhost` connects directly to 127.0.0.1; environment proxies and redirects are disabled. Known `:cloud`/`-cloud` model suffixes are rejected. Select a locally installed model and keep the daemon itself locally configured; the adapter cannot attest to daemon internals.
+
+The adapter uses [Ollama chat](https://docs.ollama.com/api/chat), [structured output](https://docs.ollama.com/capabilities/structured-outputs) and [base64 image inputs](https://docs.ollama.com/capabilities/vision): one non-streaming `/api/chat` request, a JSON schema in `format`, temperature 0, a 1024-token generation cap, and explicit image/evidence mapping in attachment order. The schema is not duplicated in the user prompt. Generation omits large `maxLength`/`maxItems` grammar repetitions; application limits of 8192 characters and 200 array entries remain enforced. Output stopped by the token cap is rejected, never repaired or accepted partially. Unverified expected parts are labelled as context, not observations. The prompt prohibits grades/dispositions, guessed OCR/identifiers, fabricated evidence and treating occlusion as absence. Schema constraints do not prove a model's visual assertions true.
+
+The existing image boundary decodes genuine JPEG/PNG bytes before any provider request. Use the already documented optional Pillow installation for genuine image validation. No new dependency was added. Missing/corrupt images or missing decoder keep their existing unavailable states. Fixture metadata cannot be sent to this real provider.
+
+Enable it through the existing library call, using a real capture-bound `row`, `source`, scoped `store`, and explicitly supplied `ImageInput` tuple `images`:
+
+```python
+from returns_manager.ollama import OllamaVisionProvider
+from returns_manager.service import inspect_capture
+from returns_manager.review_storage import ReviewWorkflow
+
+# images must already contain genuine bytes and existing capture references,
+# scoped image/evidence IDs, and ObservationScope.from_capture(capture).
+attempt_id = inspect_capture(row, source, store, images, provider=OllamaVisionProvider())
+review_id = ReviewWorkflow(store).route(row['record_id'], row['unit_id'], attempt_id=attempt_id)
+```
+
+This is an integration snippet, not a seed command: supply actual registered image inputs. Do not bind an unrelated photo to a sample return. The CSV CLI and browser do not upload images or invoke inference, and setting environment variables alone does not enable a provider there. Image ownership/registration remains the trusted caller's responsibility. The scoped review can display an accepted attempt through the existing UI; image bytes are still not served.
+
+Raw `message.content` is returned unchanged and validated by the existing `observe()`/`parse_response()` pipeline before domain observations, deterministic rules or persistence. No code-fence stripping, JSON repair, partial acceptance or fallback observations occur. Unknown fields, policy fields, forged citations and foreign scope fail existing validation. Conflicts remain separate. Without an attested DecisionReference, identity/completeness remain UNCERTAIN. With one, the scoped deterministic checks may resolve those dimensions from sufficient genuine observations. Condition grade remains null and disposition pending_review under current policy/evidence gaps.
+
+Accepted model text and existing image descriptors/hashes/source lineage are persisted. The full Ollama HTTP envelope is not stored by the current contract. Returned model name is recorded in `model_version` as a tag, not an immutable model digest. Actual `total_duration` is converted from nanoseconds to milliseconds; token usage is the sum of actual prompt/output counts only when both are present. Missing metadata stays null; no request ID, confidence or replacement telemetry is invented. Malformed/overflowing metadata is rejected. These values describe daemon-reported generation, not end-to-end application latency.
+
+Connection/HTTP errors route to provider_unavailable; socket timeouts to provider_timeout; malformed/incomplete envelopes and other provider exceptions to provider_failure. Invalid observation JSON/schema routes to invalid_response, and foreign scope to response_scope_mismatch. All use the existing unavailable/review mechanism. As before, rejected raw content is discarded, not persisted under a potentially wrong owner. There are no automatic retries, streaming fallback or additional review/business states.
+
+### Offline and optional live tests
+
+Standard tests are offline, independent of Ollama. The new successful-path tests mock the transport and decoder with explicitly labelled TEST bytes; they do not create fake image files or claim model output. Missing/corrupt-image checks exercise the actual image boundary. `FixtureProvider` continues to work unchanged.
+
+```powershell
+# From repository root; no live Ollama required:
+$env:PYTHONDONTWRITEBYTECODE = '1'
+$env:PYTEST_ADDOPTS = '-p no:cacheprovider'
+python -m pytest submissions/karthikk-2003/tests/test_ollama.py -v
+python -m pytest submissions/karthikk-2003/tests/ -v
+```
+
+Optional live smoke requires deliberate opt-in, an already-running local daemon/model, the existing image decoder and an operator-selected genuine image. From repository root:
+
+```powershell
+$env:OLLAMA_LIVE_TEST = '1'
+$env:OLLAMA_LIVE_IMAGE = Read-Host 'Absolute path to your genuine JPEG or PNG'
+python -B -m pytest -p no:cacheprovider submissions/karthikk-2003/tests/test_ollama_live.py -v
+Remove-Item Env:OLLAMA_LIVE_TEST
+Remove-Item Env:OLLAMA_LIVE_IMAGE
+```
+
+The live smoke uses an explicit TEST context in the existing alpha organization, no invented client, and persists nothing. It skips when not opted in, image/decoder unavailable, or the provider is unavailable/times out. A structurally invalid model response fails the opted-in test. Even a pass proves only transport/schema integration, not correct visual findings or benchmark accuracy. It does not complete any portion of the 50-unit visual evaluation.
 
 ## Phase 3 backend evidence and review workflow
 
@@ -224,9 +383,11 @@ Demo flow: select a return; inspect expected identity, unknown components and un
 
 Every mutation requires a reason, uses the server-configured reviewer and submits the current revision plus a once-generated command ID. Available transitions come from the backend. Decisive identity/completeness assertions require existing usable citations; no condition/disposition overrides exist. Duplicate clicks are disabled during saving. A stale revision reloads current detail/history, retains the explanation and requires deliberate reselection before resubmission. A timeout/network/5xx outcome locks the pending body and offers Retry same action with its original command ID. Pending bodies/drafts are kept in page memory only: keep the page open while reconciling an uncertain save; after a reload, check history before starting a new action.
 
-Semantic controls, labelled inputs, a native modal dialog, visible keyboard focus, a skip link and live status/error announcements support keyboard use. The sidebar/panels stack on narrow screens and wide tables scroll within their container. This is not a formal accessibility certification. The local server has no production authentication, image-serving/upload facility, real provider or finalized grading/disposition policy.
+Semantic controls, labelled inputs, a native modal dialog, visible keyboard focus, a skip link and live status/error announcements support keyboard use. The sidebar/panels stack on narrow screens and wide tables scroll within their container. This is not a formal accessibility certification. The local server has no production authentication, image-serving/upload facility, automatic inference route or finalized grading/disposition policy.
 
 ## Engineering test result
+
+Phase 6 baseline: **197 passed, 355 subtests passed in 9.48s**. Targeted Ollama tests: **19 passed, 1 skipped, 53 subtests passed in 0.32s**. Complete suite: **216 passed, 1 skipped, 408 subtests passed in 6.85s; 0 failures, 0 errors, 0 warnings**. The skipped test is the deliberately opt-in live smoke. All previous 197 tests are unchanged and passing. No live inference or genuine visual evaluation was executed for this phase.
 
 Phase 5B final: **197 passed, 355 subtests passed in 8.57s; 0 failures, 0 errors, 0 warnings**. Baseline was 192 passed / 348 subtests in 8.96s. All 192 prior tests remain; five adapter regressions cover trusted context, static/CSP boundaries, reopened history derivation, scope isolation and read-only GET behavior. Actual browser smoke covered selection, unavailable evidence, required reasons, successful review/history refresh, stale-revision draft preservation and retry after a deliberate server interruption. Desktop 1440px and narrow 390px checks showed no horizontal page overflow. These are engineering checks, not real visual inference or benchmark results.
 

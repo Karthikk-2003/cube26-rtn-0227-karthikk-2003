@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from enum import Enum
+import hashlib
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -152,21 +153,76 @@ class ObservationPlaceholder:
 
 
 @dataclass(frozen=True)
+class DecisionReference:
+    """Trusted caller's order/catalogue attestation, never a model assertion.
+
+    The source snapshot and its digest provide lineage, not proof of truth.
+    Bind it to exactly one capture and retain who verified it. No CSV auto-promotion.
+    """
+    tenant: TenantContext
+    record_id: str
+    unit_id: str
+    order_id: str
+    ordered_sku: str
+    ordered_asin: str
+    components: tuple[Component, ...]
+    parts_list_complete: bool
+    source_name: str
+    source_document: str
+    verified_by: str
+    verified_at: str
+    reference_status: str = "operator_attested"
+    source_sha256: str = field(init=False)
+
+    def __post_init__(self):
+        from datetime import datetime, timedelta
+        if self.reference_status not in ("operator_attested", "synthetic_demo"):
+            raise ValidationError("unsupported reference status")
+        if not isinstance(self.tenant, TenantContext):
+            raise ValidationError("reference tenant required")
+        TenantContext(self.tenant.organization_id, self.tenant.client_id)
+        for name in ("record_id", "unit_id", "order_id", "ordered_sku", "ordered_asin",
+                     "source_name", "verified_by", "verified_at"):
+            value = identifier(getattr(self, name), name)
+            if len(value) > 8192:
+                raise ValidationError("reference text too long")
+        validate_unicode_scalars(self.source_document)
+        if (not self.source_document.strip() or len(self.source_document) > 8192
+                or any((ord(c) < 32 and c not in "\r\n\t") or ord(c) == 127 for c in self.source_document)):
+            raise ValidationError("bounded source document text required")
+        try:
+            stamp = datetime.fromisoformat(self.verified_at.replace("Z", "+00:00"))
+            if "T" not in self.verified_at or stamp.utcoffset() != timedelta(0):
+                raise ValueError()
+        except ValueError:
+            raise ValidationError("reference verification timestamp must be UTC") from None
+        if type(self.parts_list_complete) is not bool or type(self.components) is not tuple or len(self.components) > 200:
+            raise ValidationError("bounded component tuple and explicit parts-list coverage required")
+        for component in self.components:
+            if not isinstance(component, Component):
+                raise ValidationError("reference Component required")
+            Component(component.raw, component.name, component.quantity)
+        if len({c.name.casefold() for c in self.components}) != len(self.components):
+            raise ValidationError("duplicate reference component")
+        object.__setattr__(self, "source_sha256", hashlib.sha256(self.source_document.encode("utf-8")).hexdigest())
+
+
+@dataclass(frozen=True)
 class IdentityResult:
     reasons: tuple[str, ...]
-    verdict: Verdict = field(default=Verdict.UNCERTAIN, init=False)
+    verdict: Verdict = Verdict.UNCERTAIN
     confidence: None = field(default=None, init=False)
-    evidence: tuple = field(default=(), init=False)
+    evidence: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
 class CompletenessResult:
     unknown_components: tuple[str, ...]
     reasons: tuple[str, ...]
-    verdict: Verdict = field(default=Verdict.UNCERTAIN, init=False)
-    missing_components: tuple = field(default=(), init=False)
+    verdict: Verdict = Verdict.UNCERTAIN
+    missing_components: tuple[str, ...] = ()
     confidence: None = field(default=None, init=False)
-    evidence: tuple = field(default=(), init=False)
+    evidence: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -175,7 +231,9 @@ class ConditionResult:
     verdict: Verdict = field(default=Verdict.UNCERTAIN, init=False)
     grade: None = field(default=None, init=False)
     confidence: None = field(default=None, init=False)
-    evidence: tuple = field(default=(), init=False)
+    evidence: tuple[str, ...] = ()
+    policy_source: str = field(default="https://sell.amazon.com/blog/amazon-condition-guidelines", init=False)
+    policy_status: str = field(default="category_and_nonvisual_checks_unresolved", init=False)
 
 
 @dataclass(frozen=True)
@@ -204,5 +262,6 @@ class Assessment:
     disposition: DispositionResult
     review: ReviewState
     observation: ObservationPlaceholder | ObservationBatch
-    rule_version: str = field(default="phase1-missing-evidence-1", init=False)
+    decision_reference: DecisionReference | None = None
+    rule_version: str = field(default="scoped-reference-checks-2", init=False)
     format_notice: str = field(default="internal_only_not_official_wire_contract", init=False)

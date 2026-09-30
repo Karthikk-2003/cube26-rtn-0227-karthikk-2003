@@ -1,6 +1,7 @@
 """Local, fixed-tenant WSGI adapter. Not authentication or an official wire schema."""
 
 import argparse
+import hashlib
 from dataclasses import dataclass
 from http import HTTPStatus
 import json
@@ -15,6 +16,8 @@ from .domain import TenantContext, TenantMismatch, ValidationError, validate_uni
 from .review import HumanDecision, ReviewerContext, TRANSITIONS
 from .review_storage import ReviewWorkflow
 from .storage import ConflictError, Store
+from .demo import local_image, prepare_demo, select_provider, load_demo_case, demo_reference
+from .service import inspect_capture
 
 
 PARTICIPANT = Path(__file__).resolve().parents[2]
@@ -28,6 +31,9 @@ class UIConfig:
     tenant: TenantContext
     reviewer_id: str
     port: int = 8000
+    provider: str = "disabled"
+    demo_images: tuple[Path, ...] = ()
+    demo_case: str | None = None
 
     def __post_init__(self):
         ReviewerContext(self.tenant, self.reviewer_id)
@@ -37,6 +43,13 @@ class UIConfig:
         if not path.is_relative_to(PARTICIPANT) or path.suffix != ".sqlite3":
             raise ValidationError("database must be a participant-local .sqlite3 file")
         object.__setattr__(self, "database", path)
+        if self.provider not in {"disabled", "gemini", "ollama", "fixture"}:
+            raise ValidationError("unsupported configured provider")
+        if len(self.demo_images) > 4:
+            raise ValidationError("at most four demo images")
+        object.__setattr__(self, "demo_images", tuple(local_image(p) for p in self.demo_images))
+        if self.demo_case is not None:
+            load_demo_case(self.demo_case, self.demo_images, self.tenant)
 
     @property
     def authority(self):
@@ -182,10 +195,10 @@ class UIApplication:
     def _dispatch(self, env):
         self._boundary(env)
         path, method = env.get("PATH_INFO", ""), env["REQUEST_METHOD"]
-        match = re.fullmatch(r"/api/reviews/([1-9][0-9]{0,18})(/history|/transition)?", path)
-        if path not in self.assets and path not in {"/health", "/api/context", "/api/reviews"} and match is None:
+        match = re.fullmatch(r"/api/reviews/([1-9][0-9]{0,18})(/history|/transition|/images/[0-9]+)?", path)
+        if path not in self.assets and path not in {"/health", "/api/context", "/api/reviews", "/api/demo/inspect"} and match is None:
             raise RequestError(404, "not_found", "Resource unavailable in this scope.")
-        allowed = "POST" if match and match[2] == "/transition" else "GET"
+        allowed = "POST" if path == "/api/demo/inspect" or match and match[2] == "/transition" else "GET"
         if method != allowed:
             raise RequestError(405, "method_not_allowed", "Method not supported.", (("Allow", allowed),))
         try:
@@ -205,7 +218,30 @@ class UIApplication:
         if path == "/api/context":
             return "application/json", {"organization_id": self.config.tenant.organization_id,
                 "client_id": self.config.tenant.client_id, "reviewer_id": self.config.reviewer_id,
-                "environment": "local_demo", "format_notice": NOTICE}
+                "environment": "local_demo", "format_notice": NOTICE,
+                "ai_provider": self.config.provider,
+                "demo_case": self.config.demo_case,
+                "demo_enabled": self.config.provider != "disabled" and bool(self.config.demo_images)}
+        if path == "/api/demo/inspect":
+            data = _body(env)
+            if set(data) != {"command_id"} or self.config.provider == "disabled" or not self.config.demo_images:
+                raise ValidationError("configured demo and command ID required")
+            row, source, capture, images = prepare_demo(self.config.demo_images, self.config.tenant,
+                self.config.reviewer_id, data["command_id"], fixture=self.config.provider == "fixture", case=self.config.demo_case)
+            reference = demo_reference(capture, self.config.demo_case) if self.config.demo_case else None
+            with Store(self.config.database, self.config.tenant) as store:
+                workflow = ReviewWorkflow(store)
+                existing = next((i for i in workflow.queue() if i["record_id"] == row["record_id"]), None)
+                if existing:
+                    return "application/json", {"review_id": existing["review_id"], "reused": True}
+                if store.get(row["record_id"]) is not None:
+                    raise ConflictError("incomplete previous demo; inspect history before a new attempt")
+                provider = select_provider(self.config.provider, capture)
+                attempt = inspect_capture(row, source, store, images, provider, reference=reference)
+                review_id = workflow.route(row["record_id"], row["unit_id"], attempt_id=attempt)
+                run = store.vision_attempts(row["record_id"])[-1]["run"]
+                return "application/json", {"review_id": review_id, "status": run["status"],
+                    "error_code": run["error_code"], "diagnostic": getattr(provider, "last_error", None)}
         arguments = _transition_arguments(_body(env)) if method == "POST" else None
         # Connections live only for one request. No adapter SQL or browser-selected scope.
         with Store(self.config.database, self.config.tenant) as store:
@@ -223,6 +259,21 @@ class UIApplication:
             if item is None:
                 raise TenantMismatch("unavailable review")
             record_id, unit_id = item["record_id"], item["unit_id"]
+            if match[2] and match[2].startswith("/images/"):
+                evidence = workflow.get(review_id, record_id, unit_id)["evidence"]
+                index = int(match[2].rsplit("/", 1)[1])
+                if index >= len(evidence):
+                    raise TenantMismatch("unavailable evidence")
+                image = evidence[index]
+                # Only launch-time allowlisted paths, scoped persisted references and matching bytes.
+                approved = next((p for p in self.config.demo_images
+                    if p.relative_to(PARTICIPANT).as_posix() == image["reference"]), None)
+                if approved is None or image.get("availability") != "available" or image.get("kind") != "genuine":
+                    raise TenantMismatch("unavailable evidence")
+                content = local_image(approved).read_bytes()
+                if hashlib.sha256(content).hexdigest() != image.get("sha256"):
+                    raise TenantMismatch("changed evidence")
+                return ("image/png" if content.startswith(b"\x89PNG") else "image/jpeg"), content
             if match[2] == "/history":
                 payload = history_projection(review_id, workflow.history(review_id, record_id, unit_id))
             elif match[2] == "/transition":
@@ -252,7 +303,7 @@ class UIApplication:
             body = json.dumps({"error": {"code": code, "message": message}}).encode("utf-8")
         headers = [("Content-Type", content_type), ("Content-Length", str(len(body))),
                    ("Cache-Control", "no-store"), ("X-Content-Type-Options", "nosniff"),
-                   ("Content-Security-Policy", "default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'"),
+                   ("Content-Security-Policy", "default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'"),
                    ("X-Frame-Options", "DENY"), ("Referrer-Policy", "no-referrer"),
                    ("Cross-Origin-Resource-Policy", "same-origin"), *extra_headers]
         start_response(f"{status} {HTTPStatus(status).phrase}", headers)
@@ -275,9 +326,13 @@ def main(argv=None):
     parser.add_argument("--client", default=None, help="Real trusted client context only; otherwise null")
     parser.add_argument("--port", type=int, default=8000)
     parser.add_argument("--database", type=Path, default=PARTICIPANT / "runtime" / "returns.sqlite3")
+    parser.add_argument("--provider", choices=("disabled", "gemini", "ollama", "fixture"), default="disabled")
+    parser.add_argument("--demo-image", type=Path, action="append", default=[], help="Explicit participant-local demo photo; repeat up to four times")
+    parser.add_argument("--demo-case", choices=("headphones",), default=None, help="Explicit synthetic reference package; not a real catalogue")
     args = parser.parse_args(argv)
     try:
-        config = UIConfig(args.database, TenantContext(args.organization, args.client), args.reviewer, args.port)
+        config = UIConfig(args.database, TenantContext(args.organization, args.client), args.reviewer, args.port,
+                          args.provider, tuple(args.demo_image), args.demo_case)
         app = create_app(config)
         with make_server("127.0.0.1", config.port, app) as server:
             print(f"Local Returns Manager adapter: {config.origin} (not production authentication)", flush=True)

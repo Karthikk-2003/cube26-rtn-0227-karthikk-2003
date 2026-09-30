@@ -1,0 +1,26 @@
+{
+  "label": "DEMO / SYNTHETIC REFERENCE DATA",
+  "reference_status": "synthetic_demo",
+  "organization_id": "org_demo_alpha",
+  "client_id": null,
+  "order_id": "DEMO_SYNTHETIC_HEADPHONES_ORDER",
+  "ordered_sku": "DEMO_SYNTHETIC_HEADPHONES_PRODUCT",
+  "ordered_asin": "DEMO_NOT_A_REAL_ASIN",
+  "product_name": "Synthetic over-ear headphones demo product",
+  "parts_list": "headphones x1;carrying case x1;USB cable x1;manual x1",
+  "parts_list_complete": true,
+  "image_reference": "runtime/demo-images/headphones_smoke.png.png",
+  "image_sha256": "18b05ac0c02bcc12171f311d1f0eb48fb985b232f939893f290817d56581404d",
+  "provenance": {
+    "author": "Codex assistant, at participant request",
+    "basis": "Locally authored synthetic order/catalogue definition. Not a real customer order, externally verified catalogue, official CUBE dataset or benchmark ground truth.",
+    "components_basis": "This synthetic product is defined to include one headphones unit, carrying case, USB cable and manual. Accessory selection is inspired by the CUBE wireless-headphones example; it is not a claim about the pictured product's supplied accessories or wireless capability.",
+    "verification_scope": "Project-local file identity and integrity, internal reference consistency, and explicit synthetic designation only. Runtime operator is recorded as package verifier, not a verifier of real product identity."
+  },
+  "manual_image_notes": {
+    "source": "Assistant visual inspection of the authorized local image; not provider output or evaluation labels",
+    "visible": ["Black over-ear headphones with two padded earcups and a curved headband", "Colored trim around an earcup", "Small controls/openings on the earcup", "Stylized emblem; no exact brand identification asserted"],
+    "not_established": ["Exact brand, model, SKU or ASIN", "Wireless capability, functionality or authenticity", "Usage history or condition grade", "Accessories outside this single image", "Whether the image documents an actual returned unit"],
+    "accessories": "No separate case, USB cable or manual is visible. Not visible does not mean missing."
+  }
+}

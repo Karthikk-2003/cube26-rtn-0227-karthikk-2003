@@ -10,3 +10,4 @@ dialog{width:min(620px,calc(100vw - 28px));max-height:90vh;overflow:auto;padding
 .section-head>div,.result-line>*,#review-dialog fieldset{min-width:0;max-width:100%}
 .section-head>button{flex-shrink:0}
 @media(prefers-reduced-motion:no-preference){html{scroll-behavior:smooth}}
+.demo-evidence-image{display:block;max-width:100%;max-height:320px;object-fit:contain;margin:auto}

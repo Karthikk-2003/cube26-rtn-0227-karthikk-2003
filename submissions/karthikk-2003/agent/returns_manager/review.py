@@ -65,8 +65,15 @@ def route_reasons(capture: dict, assessment: dict | None, run: dict | None) -> l
     # These policies/references remain unavailable in the current implementation.
     for dimension in ("condition", "disposition"):
         add("unresolved_policy", dimension)
-    add("unverified_reference", "identity")
-    add("unverified_reference", "completeness")
+    reference = assessment.get("decision_reference") if assessment else None
+    if not reference:
+        add("unverified_reference", "identity")
+        add("unverified_reference", "completeness")
+    elif reference.get("reference_status") == "synthetic_demo":
+        add("synthetic_reference", "identity")
+        add("synthetic_reference", "completeness")
+    elif not reference["parts_list_complete"] or not reference["components"]:
+        add("unverified_reference", "completeness")
     images = run["images"] if run else []
     supplied = {image["reference"] for image in images}
     if not capture["images"] or any(i["reference"] not in supplied for i in capture["images"]):
@@ -93,7 +100,7 @@ def route_reasons(capture: dict, assessment: dict | None, run: dict | None) -> l
             add("conflicting_" + kind, {"component": "completeness"}.get(kind, kind))
         if not batch["identity"] or any(i["state"] != "observed" for i in batch["identity"]):
             add("ambiguous_identity", "identity")
-        expected = {c["name"] for c in capture["reference"]["components"]}
+        expected = {c["name"] for c in (reference or capture["reference"])["components"]}
         observed = {c["component"] for c in batch["components"]}
         if not expected or not expected.issubset(observed) or any(
             c["presence"] in {"unknown", "conflicting"} or c["visibility"] != "visible"

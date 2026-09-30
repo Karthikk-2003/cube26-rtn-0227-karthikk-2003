@@ -132,3 +132,21 @@ def validate_capture(capture: Capture) -> None:
     rebuilt = parse_record(dict(capture.raw_fields), capture.tenant, capture.source)
     if rebuilt != capture:
         raise ValidationError("capture does not match validated source lineage")
+
+
+def validate_decision_reference(capture: Capture, reference) -> None:
+    """Validate trusted reference structure/binding; does not attest source truth."""
+    from dataclasses import fields
+    from .domain import DecisionReference
+    validate_capture(capture)
+    if not isinstance(reference, DecisionReference):
+        raise ValidationError("DecisionReference required")
+    rebuilt = DecisionReference(**{f.name: getattr(reference, f.name) for f in fields(reference) if f.init})
+    if reference != rebuilt:
+        raise ValidationError("reference source digest mismatch")
+    if (reference.tenant != capture.tenant or reference.record_id != capture.record_id
+            or reference.unit_id != capture.unit.unit_id):
+        raise TenantMismatch("decision reference organization/client/record/unit mismatch")
+    if (reference.order_id, reference.ordered_sku, reference.ordered_asin) != (
+            capture.order.order_id, capture.order.ordered_sku, capture.order.ordered_asin):
+        raise ValidationError("decision reference does not match original order")

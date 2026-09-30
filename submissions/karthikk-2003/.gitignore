@@ -1,2 +1,6 @@
 runtime/
 .test-tmp/
+.env
+.env.*
+__pycache__/
+.pytest_cache/

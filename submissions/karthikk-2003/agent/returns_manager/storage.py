@@ -85,7 +85,7 @@ class Store:
         if isinstance(assessment, Assessment) and isinstance(assessment.observation, ObservationBatch):
             raise ValidationError("vision observations require save_vision_attempt with the raw response")
         # Prevent mismatched/manual fabricated results from being attached to a capture.
-        if not isinstance(assessment, Assessment) or assessment != assess(capture, assessment.observation):
+        if not isinstance(assessment, Assessment) or assessment != assess(capture, assessment.observation, assessment.decision_reference):
             raise ValidationError("assessment does not match Phase 1 rules")
         self.save_capture(capture)
         payload = encode(assessment)
@@ -148,7 +148,7 @@ class Store:
             raise TenantMismatch("vision persistence scope mismatch")
         validate_run(capture, run)
         observation = run.observations if run.observations is not None else ObservationPlaceholder(run.error_code)
-        if assessment != assess(capture, observation):
+        if not isinstance(assessment, Assessment) or assessment != assess(capture, observation, assessment.decision_reference):
             raise ValidationError("vision assessment must match validated run")
         self.save_capture(capture)
         with self._db:

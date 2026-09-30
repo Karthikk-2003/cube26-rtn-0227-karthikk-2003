@@ -13,6 +13,9 @@
 <div class="operator-context"><span id="reviewer">Reviewer loading…</span><span id="system-status" role="status">Connecting</span></div>
 </header>
 <div id="notice" class="notice" role="status" aria-live="polite"></div>
+<section class="notice" aria-label="AI demo controls"><strong id="ai-provider">AI provider: disabled</strong>
+<button id="run-demo" type="button" class="primary" disabled>Inspect configured demo images</button>
+<span id="demo-progress" role="status">Demo context is synthetic; images must be explicitly configured at startup.</span></section>
 <div class="app-layout">
 <aside class="queue-panel" aria-labelledby="queue-title">
 <div class="section-head"><div><p class="eyebrow">WORKLIST</p><h1 id="queue-title">Review queue <span id="queue-count" class="count">—</span></h1></div><button id="refresh" class="quiet" type="button">Refresh</button></div>
@@ -47,5 +50,5 @@
 <label for="review-reason">Reason <span class="caption">Required</span></label><textarea id="review-reason" required maxlength="8192" rows="4" placeholder="Explain this action and any evidence limitations."></textarea>
 </fieldset><p id="review-feedback" role="alert"></p><div class="dialog-footer"><span class="caption">No condition or disposition overrides.</span><button id="save-review" type="submit" class="primary">Save review action</button></div>
 </form></dialog>
-<noscript>This workstation requires JavaScript. No review action occurs without an explicit submission. Automated vision is not implemented yet.</noscript>
+<noscript>This workstation requires JavaScript. No inspection or review action occurs without an explicit submission. Authoritative grading and disposition policies are not implemented yet.</noscript>
 </body></html>
