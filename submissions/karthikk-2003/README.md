@@ -42,7 +42,7 @@ See [ARCHITECTURE.md](ARCHITECTURE.md), [build-brief.md](build-brief.md) and
 ## 5. Current verified status
 
 Before deployment work: **377 passed, 2 skipped, 520 subtests; zero failures/errors**.
-After deployment changes: **391 passed, 2 skipped, 542 subtests; zero failures/errors**.
+After public-demo authentication removal: **392 passed, 2 skipped, 539 subtests; zero failures/errors**.
 The latest build-log entry records the verification scope.
 
 One authorized real Groq request using qwen/qwen3.8-27b returned HTTP 200,
@@ -59,7 +59,8 @@ application inference or public deployment is claimed.
 
 ## 6. Demo
 
-The hosted demonstration is **SYNTHETIC / DEMONSTRATION DATA**: two reproducible
+The publicly accessible hosted demonstration requires no username/password and is
+**SYNTHETIC / DEMONSTRATION DATA**: two reproducible
 missing-evidence cases, no photographs, no AI inference, no real supplier records
 and no browser mutations. Startup seeds it automatically. See
 [demo/PUBLIC_DEMO.md](demo/PUBLIC_DEMO.md) and [DEPLOYMENT.md](DEPLOYMENT.md).
@@ -127,7 +128,7 @@ clone can therefore differ. Live tests must remain explicitly disabled.
 The application does not load .env files. [.env.example](.env.example) contains
 placeholders only; configure real secrets privately.
 
-- Hosted demo: DEPLOYMENT_MODE, DEMO_PUBLIC_ORIGIN, DEMO_ACCESS_TOKEN, PORT, PYTHONPATH.
+- Hosted demo: DEPLOYMENT_MODE, DEMO_PUBLIC_ORIGIN, PORT, PYTHONPATH.
 - Optional Groq operation: GROQ_API_KEY.
 - Optional Gemini: GEMINI_API_KEY, GEMINI_FREE_TIER_CONFIRMED;
   GEMINI_MODEL and GEMINI_TIMEOUT_SECONDS configure model/timeout.
@@ -177,7 +178,7 @@ Provider output is untrusted; canonical validation rejects unsupported fields,
 business decisions, scope mismatches and invalid evidence. Rejected raw responses
 are not retained as valid observations.
 
-The public demo uses HTTPS-edge Basic access and read-only routes. Its fixed
+The public demo permits anonymous browsing over HTTPS and uses read-only routes. Its fixed
 synthetic tenant/reviewer/database cannot be selected remotely. The original
 local server remains loopback-only and is not production authentication.
 No raw collection, developer database or actual secret belongs in Git.
@@ -187,7 +188,7 @@ Ignore rules are defense in depth, not a substitute for reviewing staged files.
 
 Install requirements-deploy.txt. From the participant root, configure
 PYTHONPATH to agent, DEPLOYMENT_MODE to demo, the exact HTTPS
-DEMO_PUBLIC_ORIGIN and a privately generated DEMO_ACCESS_TOKEN; the host supplies PORT.
+DEMO_PUBLIC_ORIGIN; the host supplies PORT. No access token is needed or read.
 
 ~~~sh
 python -B -m returns_manager.deployment
@@ -200,7 +201,7 @@ no hosting deployment or external network call occurred during implementation.
 
 ## 13. Limitations
 
-- Shared demo access is not individual reviewer authentication.
+- Public demo browsing is anonymous and permits no review mutations.
 - Hosted mode demonstrates read-only uncertainty/evidence workflow, not live inspection.
 - Business condition grading and final disposition policy remain unresolved.
 - Official interoperability schema is not claimed.

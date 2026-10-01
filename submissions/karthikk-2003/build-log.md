@@ -1,5 +1,34 @@
 # Returns Manager build log
 
+## Public read-only demo: Basic Auth removed
+
+At the user's request, removed only the hosted demo Basic challenge and obsolete
+DEMO_ACCESS_TOKEN startup validation/storage. The application no longer reads that
+variable or Authorization headers. All permitted GET routes are public. Host,
+Origin, Fetch Metadata, forwarded-header handling, seeded review allowlisting,
+fixed tenant/reviewer/database, read-only enforcement and disabled inference remain
+unchanged. /health still returns status ok and mode demo. RESTRICTED DEMO wording
+is preserved. Local UI behavior, all providers, canonical validation, assessment,
+review persistence and evaluation semantics were not changed.
+
+Updated deployment tests for unauthenticated UI/assets/API access, ignored obsolete
+token configuration and no credential reflection. Existing host/origin, isolation,
+path, no-provider and seed checks remain; mutation checks now expect 405 without
+authentication and include PUT/DELETE/PATCH. Removed the four obsolete token-format
+subtests and added the CSS route subtest. Targeted: 15 passed, 19 subtests.
+Full suite: 392 passed, 2 skipped, 539 subtests in 14.31s; zero failures/errors.
+JavaScript syntax and Git whitespace checks passed. Pattern scanning found no
+credential patterns in the inspected tracked participant text; actual environment
+credentials were not accessed.
+
+Updated README, DEPLOYMENT, architecture, demo guide and placeholder environment
+example. Earlier Basic Auth descriptions below document the historical design and
+are superseded by this entry. No deployment was performed; the user must deploy
+the changed code before the hosted site becomes public. The obsolete token can
+then be removed from the hosting configuration. No dependencies added, no live
+AI/API requests, no raw collection access, no commits or pushes.
+
+
 ## 2026-10-01 - Restricted hosted demo and GitHub readiness
 
 Baseline checkpoint: 45ee04b9a5504d0f107564ddf0f16a722cf0c063; 377 passed,

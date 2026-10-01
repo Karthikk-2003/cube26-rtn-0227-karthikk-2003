@@ -1,5 +1,4 @@
 """Offline deployment checks. All credentials/context here are synthetic test data."""
-import base64
 import io
 import json
 from pathlib import Path
@@ -25,23 +24,20 @@ class DeploymentTests(unittest.TestCase):
         self.tmp = tempfile.TemporaryDirectory(dir=scratch)
         self.addCleanup(self.tmp.cleanup)
         self.database = Path(self.tmp.name) / "demo.sqlite3"
-        self.token = "TEST_ONLY_NOT_A_SECRET_1234567890123456"
         self.env = {"DEPLOYMENT_MODE": "demo", "DEMO_PUBLIC_ORIGIN": "https://demo.example.test",
-                    "DEMO_ACCESS_TOKEN": self.token, "PORT": "9123"}
+                    "PORT": "9123"}
         self.patch = patch.object(dep, "DATABASE", self.database)
         self.patch.start()
         self.addCleanup(self.patch.stop)
         self.app = dep.create_demo_app(self.env)
 
-    def request(self, path="/api/context", method="GET", auth=True, **overrides):
+    def request(self, path="/api/context", method="GET", **overrides):
         env = {}
         setup_testing_defaults(env)
         path, _, query = path.partition("?")
         env.update(PATH_INFO=path, QUERY_STRING=query, REQUEST_METHOD=method,
                    HTTP_HOST="demo.example.test", REMOTE_ADDR="192.0.2.1",
                    CONTENT_LENGTH="0", **{"wsgi.input": io.BytesIO(b"")})
-        if auth:
-            env["HTTP_AUTHORIZATION"] = "Basic " + base64.b64encode(("demo:" + self.token).encode()).decode()
         env.update(overrides)
         result = {}
         def start(status, headers):
@@ -58,40 +54,50 @@ class DeploymentTests(unittest.TestCase):
             with self.subTest(value=value), self.assertRaises(ValidationError):
                 dep.port_from_env({"PORT": value})
 
-    def test_configuration_requires_https_and_strong_access_configuration(self):
+    def test_configuration_requires_https_without_access_token(self):
         for origin in ("", "http://demo.example.test", "https://user:pass@demo.example.test",
                        "https://demo.example.test/path", "https://demo.example.test?x=1",
                        "https://demo.example.test:443", "https://demo.example.test/"):
             with self.subTest(origin=origin), self.assertRaises(ValidationError):
                 dep.demo_settings({**self.env, "DEMO_PUBLIC_ORIGIN": origin})
-        for token in ("", "short", "x" * 129, "x" * 32 + "\n"):
-            with self.subTest(length=len(token)), self.assertRaises(ValidationError):
-                dep.demo_settings({**self.env, "DEMO_ACCESS_TOKEN": token})
 
-    def test_unauthorized_requests_rejected_without_content(self):
-        for path in ("/", "/assets/workstation.js", "/api/context", "/api/reviews"):
+        self.assertEqual(dep.demo_settings(self.env), "https://demo.example.test")
+
+    def test_public_ui_and_api_do_not_require_authorization(self):
+        for path in ("/", "/assets/workstation.js", "/assets/workstation.css", "/api/context", "/api/reviews"):
             with self.subTest(path=path):
-                result = self.request(path, auth=False)
-                self.assertEqual(result["status"], 401)
-                self.assertIn("WWW-Authenticate", result["headers"])
-                self.assertNotIn(b"SYNTHETIC-DEMO-001", result["body"])
-        for header in ("Basic !", "Bearer TEST", "Basic " + "A" * 600,
-                       "Basic " + base64.b64encode(b"demo:wrong").decode()):
-            self.assertEqual(self.request(HTTP_AUTHORIZATION=header)["status"], 401)
+                result = self.request(path)
+                self.assertEqual(result["status"], 200)
+                self.assertNotIn("WWW-Authenticate", result["headers"])
+        self.assertIn(b"RESTRICTED DEMO", self.request("/")["body"])
+
+    def test_obsolete_token_and_authorization_are_not_read_or_exposed(self):
+        marker = "SYNTHETIC_TEST_SECRET_DO_NOT_ECHO"
+        class NoToken(dict):
+            def get(self, name, default=None):
+                if name == "DEMO_ACCESS_TOKEN":
+                    raise AssertionError("obsolete token read")
+                return super().get(name, default)
+        self.app = dep.create_demo_app(NoToken({**self.env, "DEMO_ACCESS_TOKEN": marker}))
+        for path in ("/", "/health", "/api/context", "/api/reviews"):
+            result = self.request(path, HTTP_AUTHORIZATION="Basic " + marker)
+            self.assertEqual(result["status"], 200)
+            self.assertNotIn(marker.encode(), result["body"])
+            self.assertNotIn(marker, repr(result["headers"]))
+            self.assertNotIn("WWW-Authenticate", result["headers"])
 
     def test_host_origin_and_forwarded_headers_cannot_bypass_access(self):
         self.assertEqual(self.request(HTTP_HOST="attacker.example")["status"], 403)
         self.assertEqual(self.request(HTTP_ORIGIN="https://attacker.example")["status"], 403)
         self.assertEqual(self.request(HTTP_SEC_FETCH_SITE="cross-site")["status"], 403)
-        self.assertEqual(self.request(auth=False, HTTP_X_FORWARDED_USER="demo",
-                         HTTP_X_FORWARDED_HOST="demo.example.test")["status"], 401)
+        self.assertEqual(self.request(HTTP_X_FORWARDED_USER="other-reviewer",
+                         HTTP_X_FORWARDED_HOST="attacker.example")["json"]["reviewer_id"], dep.REVIEWER)
         self.assertEqual(self.request(HTTP_HOST="wrong", HTTP_X_FORWARDED_HOST="demo.example.test")["status"], 403)
 
     def test_health_is_minimal_and_public_without_provider_claim(self):
-        result = self.request("/health", auth=False)
+        result = self.request("/health")
         self.assertEqual(result["status"], 200)
         self.assertEqual(result["json"], {"status": "ok", "mode": "demo"})
-        self.assertNotIn(self.token.encode(), result["body"])
 
     def test_context_is_fixed_read_only_and_has_no_credentials(self):
         result = self.request()
@@ -102,15 +108,15 @@ class DeploymentTests(unittest.TestCase):
         self.assertFalse(result["json"]["collection_enabled"])
         self.assertEqual(result["json"]["organization_id"], "org_demo_alpha")
         self.assertIsNone(result["json"]["client_id"])
-        self.assertNotIn(self.token.encode(), result["body"])
         self.assertNotIn(b"GROQ_API_KEY", result["body"])
         self.assertNotIn(str(self.database).encode(), result["body"])
 
-    def test_all_mutations_blocked_even_with_access(self):
+    def test_all_mutations_blocked_without_authentication(self):
         review = min(self.app.review_ids)
         for path in ("/api/demo/inspect", f"/api/reviews/{review}/transition", "/health"):
             self.assertEqual(self.request(path, method="POST")["status"], 405)
-            self.assertEqual(self.request(path, method="POST", auth=False)["status"], 401)
+            for method in ("PUT", "DELETE", "PATCH"):
+                self.assertEqual(self.request(path, method=method)["status"], 405)
 
     def test_remote_tenant_paths_and_provider_selection_rejected(self):
         for query in ("organization_id=org_demo_bravo", "database=other.sqlite3",
@@ -143,7 +149,7 @@ class DeploymentTests(unittest.TestCase):
     def test_demo_startup_never_selects_provider_or_reads_provider_keys(self):
         class SafeEnv(dict):
             def get(self, name, default=None):
-                if name in ("GROQ_API_KEY", "GEMINI_API_KEY"):
+                if name in ("GROQ_API_KEY", "GEMINI_API_KEY", "DEMO_ACCESS_TOKEN"):
                     raise AssertionError("provider credential access")
                 return super().get(name, default)
         with patch("returns_manager.demo.select_provider", side_effect=AssertionError("provider call")):

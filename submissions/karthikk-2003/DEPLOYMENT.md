@@ -1,6 +1,7 @@
 # Restricted read-only deployment
 
-This is a synthetic browsing demo, not an authenticated multi-user returns service.
+This is a publicly accessible synthetic, read-only browsing demo with AI inference disabled,
+not an authenticated multi-user returns service.
 No hosting deployment or live server verification is claimed.
 
 ## Prerequisites and build
@@ -8,7 +9,7 @@ No hosting deployment or live server verification is claimed.
 Use Python 3.10+ (offline tests run on Python 3.13.4). Linux portability is supported
 by source inspection, not a Linux test run. Use a hosting service with HTTPS
 termination and a private backend port. Do not expose the backend directly over
-unencrypted HTTP: Basic credentials require TLS at the public edge.
+unencrypted HTTP; the configured public origin still requires HTTPS.
 
 Set the hosting root directory to submissions/karthikk-2003. Install:
 
@@ -27,8 +28,6 @@ the real Waitress/hosting launch remains a required deployment smoke check.
 - PORT: hosting-supplied integer 1–65535; defaults to 8000.
 - DEMO_PUBLIC_ORIGIN: exact lower-case HTTPS origin without path, trailing slash,
   credentials or explicit port, for example https://your-demo-host.example.
-- DEMO_ACCESS_TOKEN: privately generated random URL-safe token, 32–128 characters.
-  Store in the host's secret configuration. Never commit it or send it in a URL.
 - PYTHONPATH: agent, relative to the configured participant root.
 
 Start:
@@ -37,11 +36,11 @@ Start:
 python -B -m returns_manager.deployment
 ~~~
 
-The browser prompts for HTTP Basic authentication: username demo, password the
-privately shared demo access token. All pages/assets/APIs require access, except
-GET /health. Share access with judges privately. This is a shared demo gate,
-not individual reviewer authentication. Browser credentials may persist until
-the browser session closes; rotating the token and restarting invalidates access.
+The demo opens directly without a username/password dialog or Authorization header.
+All permitted GET routes are public but retain the exact Host/origin checks.
+DEMO_ACCESS_TOKEN is obsolete, is not read, and may be removed from the hosting
+environment after deploying this version. No AI API key is required.
+The RESTRICTED DEMO badge refers to synthetic data, read-only access and disabled AI.
 
 The host must preserve the external Host header. The application does not trust
 forwarded host/user headers, and Waitress clears untrusted proxy headers. It
@@ -86,8 +85,8 @@ Configure the check with the public Host matching DEMO_PUBLIC_ORIGIN.
 
 After deployment:
 1. Confirm HTTPS and /health success.
-2. Confirm unauthenticated / and /api/reviews return 401.
-3. Log in privately; inspect both synthetic cases, uncertainty and history.
+2. Confirm / and /api/reviews return 200 without Authorization or WWW-Authenticate headers.
+3. Open the UI directly; inspect both synthetic cases, uncertainty and history.
 4. Confirm no review/inspection controls, no photos and no AI inference.
 5. Confirm POST, foreign Host/Origin, arbitrary paths/tenant queries are rejected.
 6. Restart and confirm the same two cases without duplicate history.

@@ -1,6 +1,8 @@
 # SYNTHETIC / DEMONSTRATION DATA
 
-The restricted hosted demo seeds two records, SYNTHETIC-DEMO-001 and
+The publicly accessible, read-only hosted demo requires no username/password.
+AI inference is disabled; the RESTRICTED DEMO badge denotes these limits.
+The hosted demo seeds two records, SYNTHETIC-DEMO-001 and
 SYNTHETIC-DEMO-002, using returns_manager.deployment.seed_demo.
 Their identifiers, order context and fixed capture timestamp are synthetic.
 There are no photographs, model responses, human assertions or real product facts.

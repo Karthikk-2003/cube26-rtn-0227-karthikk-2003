@@ -5,8 +5,8 @@ Policy architecture, initially recorded 2026-09-30. Internal contracts only; thi
 ## Restricted demo deployment update (2026-10-01)
 
 The optional deployment.py entry point wraps the existing WSGI application with
-an explicit read-only demo boundary. It requires a fixed HTTPS origin and shared
-Basic access, with only health unauthenticated. No public inference or mutations
+an explicit read-only demo boundary. It requires a fixed HTTPS origin; permitted GET routes are publicly accessible
+without username/password authentication. No public inference or mutations
 are enabled. Local ui.py remains unchanged. Two synthetic records are seeded
 through existing ingest/assessment/review logic into a separate ignored database.
 The hosted demo contains no photographs or real collection data.

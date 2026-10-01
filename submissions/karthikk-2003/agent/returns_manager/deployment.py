@@ -1,7 +1,5 @@
-"""Opt-in authenticated, read-only synthetic demo. Local launcher stays unchanged."""
-import base64
+"""Opt-in public, read-only synthetic demo. Local launcher stays unchanged."""
 import hashlib
-import hmac
 import json
 import os
 from pathlib import Path
@@ -41,12 +39,9 @@ def demo_settings(env):
                  and parsed.username is None and parsed.password is None)
     except ValueError:
         valid = False
-    token = env.get("DEMO_ACCESS_TOKEN", "")
     if not valid:
         raise ValidationError("DEMO_PUBLIC_ORIGIN must be an HTTPS origin without path or port")
-    if not isinstance(token, str) or not 32 <= len(token) <= 128 or not re.fullmatch(r"[A-Za-z0-9_-]+", token):
-        raise ValidationError("DEMO_ACCESS_TOKEN requires 32-128 URL-safe characters")
-    return origin, hashlib.sha256(token.encode("ascii")).digest()
+    return origin
 
 
 def seed_demo(database):
@@ -76,11 +71,10 @@ def seed_demo(database):
 
 
 class DemoApplication(ui.UIApplication):
-    def __init__(self, config, origin, token_digest, review_ids):
+    def __init__(self, config, origin, review_ids):
         super().__init__(config)
         self.public_origin = origin
         self.public_host = urlsplit(origin).netloc
-        self._token_digest = token_digest
         self.review_ids = review_ids
 
     def _boundary(self, env):
@@ -91,20 +85,6 @@ class DemoApplication(ui.UIApplication):
             raise ui.RequestError(403, "cross_origin_denied", "Cross-origin requests are not permitted.")
         if env.get("HTTP_SEC_FETCH_SITE", "none") not in {"none", "same-origin"}:
             raise ui.RequestError(403, "cross_origin_denied", "Cross-origin requests are not permitted.")
-        health = env.get("PATH_INFO") == "/health" and env.get("REQUEST_METHOD") == "GET"
-        if not health:
-            header = env.get("HTTP_AUTHORIZATION", "")
-            valid = False
-            if len(header) <= 512 and header.startswith("Basic "):
-                try:
-                    user, token = base64.b64decode(header[6:], validate=True).decode("ascii").split(":", 1)
-                    valid = user == "demo" and hmac.compare_digest(
-                        hashlib.sha256(token.encode("ascii")).digest(), self._token_digest)
-                except (ValueError, UnicodeError):
-                    pass
-            if not valid:
-                raise ui.RequestError(401, "demo_access_required", "Demo access is required.",
-                                      (("WWW-Authenticate", 'Basic realm="Returns Manager demo", charset="UTF-8"'),))
         if env.get("REQUEST_METHOD") != "GET":
             raise ui.RequestError(405, "read_only_demo", "This demonstration is read-only.", (("Allow", "GET"),))
 
@@ -129,12 +109,12 @@ class DemoApplication(ui.UIApplication):
 
 
 def create_demo_app(env):
-    origin, digest = demo_settings(env)
+    origin = demo_settings(env)
     port = port_from_env(env)
     # No environment-selected database, tenant, reviewer, images, collection or provider.
     config = ui.UIConfig(DATABASE, TENANT, REVIEWER, port, provider="disabled")
     ids = seed_demo(config.database)
-    return DemoApplication(config, origin, digest, ids)
+    return DemoApplication(config, origin, ids)
 
 
 def main(argv=None, *, environ=None):
@@ -158,7 +138,7 @@ def main(argv=None, *, environ=None):
               clear_untrusted_proxy_headers=True)
         return 0
     except (ValidationError, OSError, sqlite3.Error):
-        print("Deployment startup rejected; check mode, PORT, demo origin/access configuration, dependencies and writable demo storage.", file=sys.stderr)
+        print("Deployment startup rejected; check mode, PORT, demo origin configuration, dependencies and writable demo storage.", file=sys.stderr)
         return 2
     except KeyboardInterrupt:
         return 0
