@@ -1,0 +1,2 @@
+# Small production WSGI server; no AI/image dependencies for the read-only demo.
+waitress==3.0.2

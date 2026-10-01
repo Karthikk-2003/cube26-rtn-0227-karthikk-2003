@@ -1,6 +1,20 @@
 # Returns Manager architecture and policy resolution
 
-Current implementation, 2026-09-30. Internal contracts only; this is not the organiser's finalized wire schema.
+Policy architecture, initially recorded 2026-09-30. Internal contracts only; this is not the organiser's finalized wire schema.
+
+## Restricted demo deployment update (2026-10-01)
+
+The optional deployment.py entry point wraps the existing WSGI application with
+an explicit read-only demo boundary. It requires a fixed HTTPS origin and shared
+Basic access, with only health unauthenticated. No public inference or mutations
+are enabled. Local ui.py remains unchanged. Two synthetic records are seeded
+through existing ingest/assessment/review logic into a separate ignored database.
+The hosted demo contains no photographs or real collection data.
+
+The Groq provider separately passed one controlled real-image integration through
+the unchanged canonical validator and normal persistence/review flow. This is not
+an accuracy result and does not resolve condition/disposition policy. See the
+current README and DEPLOYMENT.md; earlier sections retain their phase context.
 
 ## Authority and policy findings
 

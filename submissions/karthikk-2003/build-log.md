@@ -1,5 +1,49 @@
 # Returns Manager build log
 
+## 2026-10-01 - Restricted hosted demo and GitHub readiness
+
+Baseline checkpoint: 45ee04b9a5504d0f107564ddf0f16a722cf0c063; 377 passed,
+2 skipped, 520 subtests. Before this work, the final controlled Groq request
+successfully validated and persisted attempt/review 12: HTTP 200, provider 2.515s,
+pipeline 2.576s. Identity/completeness/condition stayed UNCERTAIN, grade null and
+disposition pending_review. One image, one request; its hash was unchanged.
+This records the earlier verified result, not a new inference or accuracy claim.
+
+Added a separate deployment entry point; original local UIConfig/boundary,
+canonical validator, Groq, assessment, persistence and review semantics are unchanged.
+Default local mode delegates to the original loopback launcher. Explicit demo mode
+uses Waitress with dynamic PORT and a fixed synthetic scope/database. Exact public
+HTTPS origin and server-configured Basic access protect content. Only /health is
+unauthenticated; no HTTP mutations, inference, image serving inputs, remote tenant,
+reviewer, database or provider selection are available. The existing UI hides
+mutation controls in read-only context. Forwarded headers cannot supply identity
+or override the configured host. Hosting must terminate TLS and prevent direct
+plaintext backend access.
+
+Two labelled synthetic missing-evidence cases initialize idempotently via existing
+ingest/assessment/review methods. They contain no images, invented observations,
+human assertions, supplier data or real orders. No developer database or raw
+collection was copied. The dedicated runtime/public-demo database is created only
+on explicit seed/startup; this implementation verified seeding in temporary test DBs.
+
+Added 14 focused offline tests. Initial deployment tests exposed a fixture source
+row-number mismatch; corrected the seed to use the existing >=2 contract without
+changing validation. Final deployment tests: 14 passed, 22 subtests in 1.00s.
+Complete suite: 391 passed, 2 skipped, 542 subtests in 16.38s; zero failures/errors.
+The original UI tests remain green. JavaScript syntax check passed.
+
+Waitress 3.0.2 is the sole deployment dependency. It is not installed here and no
+network installation was attempted. Server wiring is mock-tested; actual Waitress
+startup, HTTPS-edge behavior and Linux/browser hosting smoke tests remain required.
+No public deployment or production readiness certification is claimed.
+
+Rewrote README as a current reviewer guide; added deployment/demo instructions,
+placeholder-only trackable .env.example, dependency manifests, and narrow ignore
+protections. Preserved the existing exact root raw-collection/ZIP exclusions and
+all historical build-log entries. No AI calls, external network requests, provider
+credential access, business-policy changes, commits or pushes in this work.
+
+
 ## 2026-10-01 - Safe Groq canonical-validation diagnostics (offline only)
 
 Attempt 10's rejected raw response was intentionally discarded; its exact mismatch cannot be recovered from retained metadata. Confirmed the diagnostic gap: canonical parse_response exceptions become invalid_response without a reason. Added an optional failure-diagnostic hook used by Groq and a diagnostic-only module that reuses canonical checks. It emits fixed categories, canonical paths, permitted enums/constraints, missing canonical field names and unexpected-field counts. Provider values, unknown field names, raw JSON, images and credentials are never emitted. Diagnostics remain on the transient provider object and sanitized CLI result, not on persisted observation runs. Diagnostic failure cannot change rejection behavior.

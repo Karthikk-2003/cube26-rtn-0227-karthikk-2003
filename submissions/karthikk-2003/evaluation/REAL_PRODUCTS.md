@@ -1,5 +1,13 @@
 # Local real-product collection and review demo
 
+
+Current status update (2026-10-01): a later controlled Groq request successfully
+passed canonical validation and persisted attempt/review 12. The earlier failed
+attempts below remain historical. No independent visual accuracy result is claimed.
+The public hosted demo uses separate synthetic records and does not distribute
+this collection or the developer database. See ../README.md and ../DEPLOYMENT.md.
+
+
 This workflow audits the read-only collection and prepares its populated records for the existing inspection workstation. It is an **offline evidence/review demo**, not a successful AI inspection or independent-human benchmark.
 
 ## Verified collection

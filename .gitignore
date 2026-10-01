@@ -7,3 +7,10 @@ __pycache__/
 .venv/
 venv/
 .DS_Store
+
+# Private raw product collection; derived participant reports remain visible.
+/CUBE 2026 — RTN PRODUCT COLLECTION-20260930T161737Z-1-001/
+/CUBE 2026 — RTN PRODUCT COLLECTION-20260930T161737Z-1-001.zip
+
+# Local test cache; source and safe demo assets remain trackable.
+.pytest_cache/

@@ -22,7 +22,7 @@
       let response;
       try { response = await fetch(path, options); }
       catch (err) { $('system-status').textContent = 'Connection unavailable'; throw err; }
-      $('system-status').textContent = 'Connected · local adapter';
+      $('system-status').textContent = state.context?.read_only ? 'Connected · read-only demo' : 'Connected · local adapter';
       let result;
       try { result = await response.json(); } catch { throw Object.assign(new Error('The server response could not be read.'), {status: response.status >= 400 ? response.status : 0}); }
       if (!response.ok) throw Object.assign(new Error(result.error?.message || 'Request failed.'), {status: response.status});
@@ -186,7 +186,7 @@
     if (completeness) comp.append(datum('Confirmed missing components', completeness.missing_components.join(', ') || 'None established'),
       datum('Unresolved components', completeness.unknown_components.join(', ') || 'None listed'));
     renderEvidence(); renderUncertainty();
-    $('open-review').disabled = !state.context || !d.allowed_transitions.length;
+    $('open-review').disabled = !state.context || state.context.read_only || !d.allowed_transitions.length;
   }
   function renderEvidence() {
     const d = state.detail, body = $('evidence-body'), grid = el('div', null, 'evidence-grid');
@@ -345,6 +345,9 @@
     try {
       const [context] = await Promise.all([api('/api/context'), api('/health')]);
       state.context = context;
+      $('open-review').hidden = Boolean(context.read_only);
+      $('run-demo').hidden = Boolean(context.read_only);
+      if (context.read_only) notice(context.demo_label + ' · read-only · no AI inference or real product evidence.');
       if (context.demo_case) notice('DEMO / SYNTHETIC REFERENCE DATA · ' + context.demo_case + ' · not customer data or benchmark ground truth.');
       if (context.collection_enabled) notice('Local real-product collection · AI disabled unless separately configured. Supplier statements are not independent evaluation labels.');
       $('organization').textContent = context.organization_id + (context.client_id === null ? ' · Client not supplied' : ' · ' + context.client_id);
@@ -352,7 +355,7 @@
       $('ai-provider').textContent = 'AI provider: ' + (context.ai_provider === 'gemini' ? 'Gemini · LIVE' : context.ai_provider === 'ollama' ? 'Ollama · LOCAL' : context.ai_provider === 'fixture' ? 'Fixture · TEST ONLY' : 'disabled');
       if (context.configured_model) $('ai-provider').textContent += ` · Model configured: ${context.configured_model} · reachability/inference not established by configuration`;
       $('run-demo').disabled = !context.demo_enabled;
-      $('system-status').textContent = 'Connected · local adapter';
+      $('system-status').textContent = state.context?.read_only ? 'Connected · read-only demo' : 'Connected · local adapter';
     } catch (err) { $('system-status').textContent = 'Connection unavailable'; notice('Could not establish trusted server context. Use Refresh to retry. ' + err.message, true); }
     await loadQueue();
   }
