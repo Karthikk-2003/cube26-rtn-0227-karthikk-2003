@@ -19,6 +19,29 @@ MODEL = 'qwen/qwen3.8-27b'
 MAX_RESPONSE = 2_000_000
 USER_AGENT = 'cube-returns-manager/1.0'
 
+# Groq generation guidance only; canonical parsing remains authoritative.
+GROQ_SYSTEM_PROMPT = SYSTEM_PROMPT + """
+Condition entry rules (check each entry before returning JSON):
+- observed: describe the concrete physical feature visibly seen in a nonempty description;
+  cite the supplied image evidence ID supporting it.
+- not_observed: use only when the relevant area is visible and the feature is not seen.
+  A nonempty description must explain that limited visible finding; cite its image and
+  include nonempty limitations describing the inspected coverage. This is not proof
+  about hidden surfaces.
+- conflicting: requires a nonempty description of the conflicting visible findings,
+  at least two distinct supplied evidence IDs, and nonempty limitations. With only
+  one supplied image/evidence ID, do not emit conflicting.
+- unknown or not_visible: description must be null, with nonempty limitations explaining
+  why the feature cannot be determined. not_visible must cite the supplied image;
+  unknown may have empty evidence_refs.
+Never pair observed, not_observed or conflicting with description=null. Never invent
+a description to satisfy this rule. If the image does not support a finding, represent
+that uncertainty honestly using the rules above, or omit the entry with an explicit
+batch limitation. Empty condition arrays are allowed.
+Cite only supplied evidence IDs, never invented references. Do not infer a business
+condition grade, product authenticity or disposition from these physical observations.
+"""
+
 
 class GroqHTTPFailure(ProviderUnavailable):
     def __init__(self, status):
@@ -119,7 +142,7 @@ class GroqVisionProvider:
                    'required_json_schema': observation_schema(request)}
         payload = {'model': MODEL, 'stream': False, 'temperature': 0, 'max_completion_tokens': 4096,
                    'response_format': {'type': 'json_object'},
-                   'messages': [{'role': 'system', 'content': SYSTEM_PROMPT}, {'role': 'user', 'content': [
+                   'messages': [{'role': 'system', 'content': GROQ_SYSTEM_PROMPT}, {'role': 'user', 'content': [
                        {'type': 'text', 'text': 'Return only concise grounded observation JSON matching this schema. ' + json.dumps(context)},
                        {'type': 'image_url', 'image_url': {'url': 'data:image/jpeg;base64,' + base64.b64encode(content).decode('ascii')}}]}]}
         started = time.perf_counter()

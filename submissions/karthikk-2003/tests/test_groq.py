@@ -154,3 +154,73 @@ class GroqTests(unittest.TestCase):
         self.batch['condition'][0]['description'] = None
         self.assertEqual(self.run_model().status,'validated')
         self.assertIsNone(self.provider.validation_diagnostic)
+
+    def test_groq_condition_generation_guidance_is_local_and_explicit(self):
+        from returns_manager.groq import GROQ_SYSTEM_PROMPT
+        from returns_manager.ollama import SYSTEM_PROMPT
+        self.assertEqual(self.run_model().status, 'validated')
+        payload = self.transport.call_args.args[1]
+        self.assertEqual(payload['messages'][0]['content'], GROQ_SYSTEM_PROMPT)
+        self.assertTrue(GROQ_SYSTEM_PROMPT.startswith(SYSTEM_PROMPT))
+        self.assertNotIn('Condition entry rules', SYSTEM_PROMPT)
+        for guidance in ('observed:', 'not_observed:', 'conflicting:',
+                         'unknown or not_visible:', 'nonempty description',
+                         'nonempty limitations', 'at least two distinct supplied evidence IDs',
+                         'description must be null', 'not_visible must cite',
+                         'Never invent', 'business'):
+            self.assertIn(guidance.lower(), GROQ_SYSTEM_PROMPT.lower())
+        self.assertEqual(payload['response_format'], {'type': 'json_object'})
+
+    def test_condition_states_keep_canonical_description_rules(self):
+        # Synthetic responses only: validate through the unchanged real parser.
+        for state, description, refs, limits in (
+            ('observed', 'TEST visible scratch', ['TEST-evidence'], []),
+            ('not_observed', 'TEST no scratch seen on visible face', ['TEST-evidence'], ['TEST hidden rear']),
+            ('unknown', None, [], ['TEST cannot determine']),
+            ('not_visible', None, ['TEST-evidence'], ['TEST surface obscured']),
+        ):
+            with self.subTest(state=state):
+                self.batch['condition'] = [dict(feature='scratches', state=state,
+                    description=description, evidence_refs=refs, limitations=limits)]
+                run = self.run_model()
+                self.assertEqual(run.status, 'validated')
+                self.assertEqual(run.observations.condition[0].description, description)
+                self.assertEqual(run.observations.condition[0].state, state)
+
+    def test_null_visible_description_rejected_without_repair_or_persistence(self):
+        for state in ('observed', 'not_observed', 'conflicting'):
+            with self.subTest(state=state):
+                self.batch['condition'] = [
+                    dict(feature='scuffs', state='unknown', description=None,
+                         evidence_refs=[], limitations=['SYNTHETIC TEST uncertainty']),
+                    dict(feature='scratches', state=state, description=None,
+                         evidence_refs=['TEST-evidence'], limitations=['SYNTHETIC TEST coverage'])]
+                with Store(':memory:', self.capture.tenant) as store, patch(
+                        'returns_manager.vision.image_availability', return_value='available'):
+                    attempt = inspect_capture(self.row, self.source, store, self.images, self.provider)
+                    actual = store.vision_attempts(self.capture.record_id)[0]['run']
+                    self.assertEqual(actual['error_code'], 'invalid_response')
+                    self.assertIsNone(actual['observations'])
+                    self.assertIsNone(actual['raw_response'])
+                diag = self.provider.validation_diagnostic
+                self.assertEqual(diag['path'], '$.condition[1].description')
+                self.assertEqual(diag['category'], 'canonical_rule')
+                self.assertEqual(diag['expected'], 'visible finding needs a provider description')
+                self.assertIsNone(self.batch['condition'][1]['description'])
+
+    def test_condition_uncertainty_and_evidence_constraints_stay_strict(self):
+        for state, description, refs, limits in (
+            ('unknown', 'TEST invented finding', [], ['TEST']),
+            ('not_visible', None, [], ['TEST']),
+            ('unknown', None, [], []),
+            ('not_observed', 'TEST finding', ['TEST-evidence'], []),
+            ('observed', 'TEST finding', ['TEST-invented-evidence'], []),
+            ('conflicting', 'TEST conflict', ['TEST-evidence'], ['TEST']),
+        ):
+            with self.subTest(state=state, refs=refs, limits=limits):
+                self.batch['condition'] = [dict(feature='scratches', state=state,
+                    description=description, evidence_refs=refs, limitations=limits)]
+                run = self.run_model()
+                self.assertEqual(run.error_code, 'invalid_response')
+                self.assertIsNone(run.observations)
+                self.assertIsNone(run.raw_response)
