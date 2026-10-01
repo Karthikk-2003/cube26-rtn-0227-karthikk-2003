@@ -62,7 +62,9 @@ class NoRedirect(HTTPRedirectHandler):
         raise ProviderUnavailable("gemini_redirect_rejected")
 
 
-def post_json(url, payload, timeout, api_key):
+def post_json(url, payload, timeout, api_key, *, max_attempts=3):
+    if type(max_attempts) is not int or not 1 <= max_attempts <= 3:
+        raise ValidationError("one to three Gemini HTTP attempts required")
     if not url.startswith(API_ROOT) or not re.fullmatch(r"gemini-[a-z0-9.-]+:generateContent", url[len(API_ROOT):]):
         raise ValidationError("Gemini endpoint required")
     body = json.dumps(payload, separators=(",", ":"), allow_nan=False).encode("utf-8")
@@ -73,7 +75,7 @@ def post_json(url, payload, timeout, api_key):
     # Three attempts maximum, sharing one elapsed-time budget. Never retry an
     # ambiguous network timeout or invalid/authentication response.
     deadline = time.monotonic() + timeout
-    for attempt in range(3):
+    for attempt in range(max_attempts):
         remaining = deadline - time.monotonic()
         if remaining <= 0:
             raise TimeoutError("gemini_timeout")
@@ -102,7 +104,7 @@ def post_json(url, payload, timeout, api_key):
                         delay = max(delay, seconds)
                 except ValueError:
                     retryable = False
-            if not retryable or attempt == 2 or delay >= deadline - time.monotonic():
+            if not retryable or attempt == max_attempts - 1 or delay >= deadline - time.monotonic():
                 raise ProviderUnavailable(code) from None
             time.sleep(delay)
         except URLError as exc:

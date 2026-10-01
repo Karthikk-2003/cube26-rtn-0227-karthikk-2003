@@ -92,6 +92,9 @@ def prepare_demo(paths, tenant, operator, command_id, *, fixture=False, case=Non
 
 
 def select_provider(name, capture=None):
+    if name == "groq":
+        from .groq import GroqVisionProvider
+        return GroqVisionProvider()
     if name == "gemini":
         from .gemini import GeminiVisionProvider
         return GeminiVisionProvider()

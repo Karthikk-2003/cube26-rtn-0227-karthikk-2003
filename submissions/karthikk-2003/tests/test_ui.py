@@ -99,6 +99,15 @@ class UITests(unittest.TestCase):
         self.assertIn(b"not implemented yet", shell["body"])
         self.assertNotIn(str(self.database).encode(), shell["body"])
 
+    def test_empty_collection_source_cli_rejected_before_server_start(self):
+        for value in ("", "   "):
+            with self.subTest(value=value), redirect_stderr(io.StringIO()), patch.object(ui, "create_app") as create:
+                with self.assertRaises(SystemExit) as error:
+                    ui.main(["--organization", "org_demo_alpha", "--reviewer", "TEST-reviewer",
+                             "--collection-source", value])
+                self.assertEqual(error.exception.code, 2)
+                create.assert_not_called()
+
     def test_workstation_context_is_trusted_and_read_only(self):
         result = self.request("/api/context")
         self.assertEqual(result["status"], 200)
@@ -247,6 +256,28 @@ class UITests(unittest.TestCase):
         self.assertEqual(self.transition(command_id="TEST-stale")["status"], 409)
         self.assertEqual(self.transition(reason="TEST-changed")["status"], 409)
         self.assertEqual(len(self.history()), 2)
+
+    def test_assertions_require_preexisting_active_review_for_both_dimensions(self):
+        before = self.request(self.url)["json"]
+        initial_history = self.history()
+        for dimension in ("identity", "completeness"):
+            with self.subTest(dimension=dimension):
+                decision = {"dimension": dimension, "verdict": "UNCERTAIN", "evidence_refs": []}
+                self.assertEqual(self.transition(decisions=[decision])["status"], 422)
+                self.assertEqual(self.history(), initial_history)
+        self.assertEqual(self.transition()["status"], 200)
+        for revision, dimension in enumerate(("identity", "completeness"), 2):
+            decision = {"dimension": dimension, "verdict": "UNCERTAIN", "evidence_refs": []}
+            self.assertEqual(self.transition(expected_revision=revision, command_id="TEST-active-" + dimension,
+                                             decisions=[decision])["status"], 200)
+        after = self.request(self.url)["json"]
+        self.assertEqual(set(after["human_decisions"]), {"identity", "completeness"})
+        for key in ("capture", "evidence", "raw_response", "observations", "automated_assessment", "uncertainty"):
+            self.assertEqual(after[key], before[key])
+        self.assertEqual(self.history()[:1], initial_history)
+        self.assertEqual(len(self.history()), 4)
+        self.assertEqual(self.transition(command_id="TEST-old-revision")["status"], 409)
+        self.assertEqual(len(self.history()), 4)
 
     def test_idempotent_retry_keeps_same_event_and_history(self):
         first = self.transition()

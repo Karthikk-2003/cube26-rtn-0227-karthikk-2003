@@ -223,6 +223,18 @@ class GeminiTests(unittest.TestCase):
                 self.assertEqual(opener.open.call_count, 3)
                 self.assertEqual([c.args[0] for c in self.sleep.call_args_list], [0.75, 1.5])
 
+    def test_controlled_single_http_attempt_stops_on_503(self):
+        opener = Mock()
+        opener.open.side_effect = HTTPError('TEST', 503, 'TEST', {}, io.BytesIO())
+        self.sleep.reset_mock()
+        with patch('returns_manager.gemini.build_opener', return_value=opener), self.assertRaises(ProviderUnavailable):
+            post_json(self.provider.config.endpoint, {}, 90, 'TEST', max_attempts=1)
+        opener.open.assert_called_once()
+        self.sleep.assert_not_called()
+        for count in (0, 4, True):
+            with self.assertRaises(ValidationError):
+                post_json(self.provider.config.endpoint, {}, 90, 'TEST', max_attempts=count)
+
     def test_retry_after_and_permanent_failures_stop(self):
         for status, headers in ((401, {}), (400, {}), (501, {}), (429, {"Retry-After": "120"}), (503, {"Retry-After": "invalid"})):
             opener = Mock()

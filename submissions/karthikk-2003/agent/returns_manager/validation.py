@@ -10,7 +10,8 @@ from pathlib import Path
 from .domain import (
     Capture, Component, Disposition, EvidenceReference, OrderContext,
     ProductReference, SourceLineage, TenantContext, TenantMismatch, Unit,
-    ValidationError, identifier, validate_unicode_scalars,
+    ValidationError, identifier, validate_unicode_scalars, CollectionLineage, CollectionReference,
+    CollectionEvidenceReference, lineage_from_dict,
 )
 
 FIELDS = (
@@ -70,7 +71,8 @@ def parse_record(row: dict[str, str], context: TenantContext, source: SourceLine
         raise ValidationError("trusted tenant context and source lineage required")
     # Recheck supplied context/lineage at the input boundary as well as construction.
     TenantContext(context.organization_id, context.client_id)
-    SourceLineage(source.source_name, source.source_sha256, source.row_number)
+    from dataclasses import asdict
+    lineage_from_dict(asdict(source))
     if not isinstance(row, dict) or set(row) != set(FIELDS):
         raise ValidationError("record must contain exactly the documented sample fields")
     if any(not isinstance(value, str) for value in row.values()):
@@ -83,6 +85,21 @@ def parse_record(row: dict[str, str], context: TenantContext, source: SourceLine
         identifier(row[name], name)
     if row["org_id"] != context.organization_id:
         raise TenantMismatch("organization context mismatch")
+    if isinstance(source, CollectionLineage):
+        import json
+        snapshot = json.loads(source.metadata_snapshot)
+        metadata = snapshot["metadata"]
+        expected = {"record_id": metadata.get("case_id"), "unit_id": metadata.get("unit_id"),
+                    "order_id": metadata.get("order_id"), "ordered_sku": metadata.get("sku") or "UNKNOWN",
+                    "ordered_asin": metadata.get("asin") or "UNKNOWN"}
+        try:
+            expected["photo_refs"] = ";".join("collection/" + image["source_path"] for image in snapshot["images"])
+        except (KeyError, TypeError):
+            raise ValidationError("collection snapshot image structure invalid") from None
+        if any(row[k] != value for k, value in expected.items()):
+            raise ValidationError("collection capture differs from source identifiers/image references")
+        if any(row[k] for k in ("identity_match", "parts_list", "parts_missing", "observed_state", "amazon_condition", "operator_disposition")):
+            raise ValidationError("collection supplier statements cannot become system labels or trusted parts")
     try:
         captured = datetime.fromisoformat(row["captured_at"].replace("Z", "+00:00"))
         if "T" not in row["captured_at"] or captured.utcoffset() != timedelta(0):
@@ -105,7 +122,8 @@ def parse_record(row: dict[str, str], context: TenantContext, source: SourceLine
         except ValueError as exc:
             raise ValidationError("operator_disposition: unsupported historical value") from exc
 
-    images = tuple(EvidenceReference(ref) for ref in split_entries(row["photo_refs"], "photo_refs"))
+    evidence_type = CollectionEvidenceReference if isinstance(source, CollectionLineage) else EvidenceReference
+    images = tuple(evidence_type(ref) for ref in split_entries(row["photo_refs"], "photo_refs"))
     blockers = ["image_evidence_unavailable", "catalogue_reference_unverified",
                 "condition_policy_unavailable", "disposition_policy_unavailable"]
     if context.client_id is None:
@@ -116,10 +134,14 @@ def parse_record(row: dict[str, str], context: TenantContext, source: SourceLine
         blockers.append("component_quantities_unverified")
     if row["amazon_condition"]:
         blockers.append("historical_condition_not_authoritative")
+    if isinstance(source, CollectionLineage):
+        blockers.extend(("supplier_metadata_not_verified_order", "collection_order_label_synthetic",
+                         "capture_timestamp_is_ingestion_time", "independent_human_annotations_absent"))
+    reference_type = CollectionReference if isinstance(source, CollectionLineage) else ProductReference
     return Capture(
         row["record_id"], context, Unit(row["unit_id"]),
         OrderContext(row["order_id"], row["ordered_sku"], row["ordered_asin"]),
-        ProductReference(row["ordered_sku"], row["ordered_asin"], components),
+        reference_type(row["ordered_sku"], row["ordered_asin"], components),
         row["operator_id"], row["captured_at"], images, source,
         tuple(sorted(row.items())), tuple(blockers),
     )

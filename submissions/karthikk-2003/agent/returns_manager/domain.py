@@ -128,6 +128,62 @@ class SourceLineage:
 
 
 @dataclass(frozen=True)
+class CollectionLineage(SourceLineage):
+    """Real files with supplier statements and synthetic collection order labels.
+
+    row_number is the stable product index + 1, not a claim of a source CSV row.
+    captured_at records ingestion time; no camera timestamp is inferred.
+    """
+    metadata_snapshot: str
+    kind: str = field(default="real_product_collection", init=False)
+    timestamp_kind: str = field(default="ingested_at_not_photographed_at", init=False)
+
+    def __post_init__(self):
+        super().__post_init__()
+        validate_unicode_scalars(self.metadata_snapshot)
+        if len(self.metadata_snapshot) > 100_000:
+            raise ValidationError("collection metadata snapshot too large")
+        import json
+        def pairs(items):
+            result = {}
+            for key, item in items:
+                if key in result:
+                    raise ValidationError("duplicate collection metadata key")
+                result[key] = item
+            return result
+        try:
+            value = json.loads(self.metadata_snapshot, object_pairs_hook=pairs)
+        except (ValueError, RecursionError):
+            raise ValidationError("invalid collection metadata JSON") from None
+        if (not isinstance(value, dict) or not isinstance(value.get("metadata"), dict)
+                or value["metadata"].get("independent_annotations") != "not_supplied"):
+            raise ValidationError("collection source snapshot required")
+        if hashlib.sha256(self.metadata_snapshot.encode()).hexdigest() != self.source_sha256:
+            raise ValidationError("collection snapshot digest mismatch")
+
+
+@dataclass(frozen=True)
+class CollectionReference(ProductReference):
+    status: str = field(default="unverified_supplier_collection_reference", init=False)
+
+
+@dataclass(frozen=True)
+class CollectionEvidenceReference(EvidenceReference):
+    reason: str = field(default="collection_file_requires_image_validation", init=False)
+
+
+def lineage_from_dict(value):
+    """Rehydrate only recognized lineage types; never accept arbitrary source kinds."""
+    from dataclasses import fields, asdict
+    kind = value.get("kind")
+    cls = CollectionLineage if kind == "real_product_collection" else SourceLineage
+    source = cls(**{f.name: value[f.name] for f in fields(cls) if f.init})
+    if asdict(source) != value:
+        raise ValidationError("unrecognized or altered source lineage")
+    return source
+
+
+@dataclass(frozen=True)
 class Capture:
     record_id: str
     tenant: TenantContext

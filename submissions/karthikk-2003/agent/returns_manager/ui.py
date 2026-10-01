@@ -34,6 +34,7 @@ class UIConfig:
     provider: str = "disabled"
     demo_images: tuple[Path, ...] = ()
     demo_case: str | None = None
+    collection_source: Path | None = None
 
     def __post_init__(self):
         ReviewerContext(self.tenant, self.reviewer_id)
@@ -50,6 +51,9 @@ class UIConfig:
         object.__setattr__(self, "demo_images", tuple(local_image(p) for p in self.demo_images))
         if self.demo_case is not None:
             load_demo_case(self.demo_case, self.demo_images, self.tenant)
+        if self.collection_source is not None:
+            from .collection import source_root
+            object.__setattr__(self, "collection_source", source_root(self.collection_source))
 
     @property
     def authority(self):
@@ -216,11 +220,20 @@ class UIApplication:
         if path == "/health":
             return "application/json", {"status": "ok"}
         if path == "/api/context":
+            configured_model = None
+            if self.config.provider == "ollama":
+                from .ollama import OllamaConfig
+                configured_model = OllamaConfig.from_env().model
+            elif self.config.provider == "gemini":
+                from .gemini import GeminiConfig
+                configured_model = GeminiConfig.from_env().model
             return "application/json", {"organization_id": self.config.tenant.organization_id,
                 "client_id": self.config.tenant.client_id, "reviewer_id": self.config.reviewer_id,
                 "environment": "local_demo", "format_notice": NOTICE,
                 "ai_provider": self.config.provider,
+                "configured_model": configured_model,
                 "demo_case": self.config.demo_case,
+                "collection_enabled": self.config.collection_source is not None,
                 "demo_enabled": self.config.provider != "disabled" and bool(self.config.demo_images)}
         if path == "/api/demo/inspect":
             data = _body(env)
@@ -260,11 +273,18 @@ class UIApplication:
                 raise TenantMismatch("unavailable review")
             record_id, unit_id = item["record_id"], item["unit_id"]
             if match[2] and match[2].startswith("/images/"):
-                evidence = workflow.get(review_id, record_id, unit_id)["evidence"]
+                detail = workflow.get(review_id, record_id, unit_id)
+                evidence = detail["evidence"]
                 index = int(match[2].rsplit("/", 1)[1])
                 if index >= len(evidence):
                     raise TenantMismatch("unavailable evidence")
                 image = evidence[index]
+                if self.config.collection_source is not None and image["reference"].startswith("collection/"):
+                    from .collection_pipeline import serve_image
+                    try:
+                        return serve_image(self.config.collection_source, detail["capture"], image)
+                    except (ValidationError, OSError):
+                        raise TenantMismatch("unavailable collection evidence") from None
                 # Only launch-time allowlisted paths, scoped persisted references and matching bytes.
                 approved = next((p for p in self.config.demo_images
                     if p.relative_to(PARTICIPANT).as_posix() == image["reference"]), None)
@@ -281,6 +301,18 @@ class UIApplication:
                 payload = {"format_notice": NOTICE, "review_id": review_id, "event": event}
             else:
                 payload = detail_projection(workflow.get(review_id, record_id, unit_id))
+                # Resolve persisted provenance in the same scope; current launch mode
+                # is not evidence that this historical attempt succeeded.
+                attempt = next((a for a in store.vision_attempts(record_id)
+                                if "vision:" + str(a["attempt_id"]) == item["source_key"]), None)
+                run = attempt["run"] if attempt else None
+                payload["provider_attempt"] = None if run is None else {
+                    "provider": run["provider_name"], "mode": run["provider_mode"],
+                    "status": run["status"], "error_code": run["error_code"],
+                    "validated_observation_persisted": run["observations"] is not None,
+                    "model": run["raw_response"]["model_version"] if run["raw_response"] else None,
+                    "latency_ms": run["raw_response"]["latency_ms"] if run["raw_response"] else None,
+                }
             return "application/json", payload
 
     def __call__(self, environ, start_response):
@@ -319,6 +351,13 @@ def create_app(config: UIConfig):
     return app
 
 
+def _collection_source_argument(value):
+    # Path('') becomes '.', concealing an unset shell variable until image requests.
+    if not value.strip():
+        raise argparse.ArgumentTypeError("--collection-source requires an explicit nonempty collection directory")
+    return Path(value)
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--organization", required=True)
@@ -329,10 +368,11 @@ def main(argv=None):
     parser.add_argument("--provider", choices=("disabled", "gemini", "ollama", "fixture"), default="disabled")
     parser.add_argument("--demo-image", type=Path, action="append", default=[], help="Explicit participant-local demo photo; repeat up to four times")
     parser.add_argument("--demo-case", choices=("headphones",), default=None, help="Explicit synthetic reference package; not a real catalogue")
+    parser.add_argument("--collection-source", type=_collection_source_argument, help="Read-only source root for snapshot-bound collection images; localhost only")
     args = parser.parse_args(argv)
     try:
         config = UIConfig(args.database, TenantContext(args.organization, args.client), args.reviewer, args.port,
-                          args.provider, tuple(args.demo_image), args.demo_case)
+                          args.provider, tuple(args.demo_image), args.demo_case, args.collection_source)
         app = create_app(config)
         with make_server("127.0.0.1", config.port, app) as server:
             print(f"Local Returns Manager adapter: {config.origin} (not production authentication)", flush=True)

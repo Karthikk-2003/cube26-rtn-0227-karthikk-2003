@@ -106,24 +106,45 @@
     if (automated) box.append(el('p', (automated.reasons || []).map(pretty).join(' · ')), citations(automated.evidence || []));
     const human = d.human_decisions[dimension];
     box.append(el('p', human ? `Human assertion: ${human.verdict} · ${human.reviewer_id} · revision ${human.revision}` : 'Human assertion: Not recorded'));
-    if (human) box.append(el('p', human.reason), citations(human.evidence_refs));
+    if (human) {
+      if (dimension === 'identity' && human.verdict === 'UNCERTAIN') {
+        box.append(el('p', 'Identity remains UNCERTAIN. Supplier metadata and available evidence do not independently verify identity or authenticity.', 'caption'));
+      }
+      box.append(datum('Reviewer explanation (recorded text, not a system conclusion)', human.reason), citations(human.evidence_refs));
+    }
     return box;
   }
   function renderDetail() {
     const d = state.detail, c = d.capture, batch = d.observations;
+    const collection = c.source.kind === 'real_product_collection';
     const reference = d.automated_assessment?.decision_reference;
     $('return-title').textContent = c.unit.unit_id;
     $('return-meta').replaceChildren(...[
       ['Record', d.record_id], ['Organization', d.organization_id], ['Order', c.order.order_id],
-      ['Capture timestamp', `${date(c.captured_at)} · ${c.captured_at}`], ['Capture operator', c.operator_id], ['Review case / revision', `${d.review_id} / ${d.revision}`]
+      [collection ? 'Ingested at (photo time unknown)' : 'Capture timestamp', `${date(c.captured_at)} · ${c.captured_at}`], ['Capture operator', c.operator_id], ['Review case / revision', `${d.review_id} / ${d.revision}`]
     ].map(([k,v]) => datum(k,v)));
     const row = state.queueReady ? state.queue.find(r => r.review_id === d.review_id && r.revision === d.revision) : null;
     $('return-status').replaceChildren(badge('Workflow: ' + workflowLabel({...d, reopened: row?.reopened || false}), 'warning'), el('strong', 'Business disposition: ' + pretty(d.business_status)));
     const telemetry = d.raw_response;
-    const providerLabel = batch?.provider_name === 'gemini' ? 'Gemini · LIVE' : batch?.provider_name === 'ollama' ? 'Ollama · LOCAL' : 'Fixture · TEST ONLY';
+    const providerLabel = batch?.provider_name === 'groq' ? 'Groq · LIVE' : batch?.provider_name === 'gemini' ? 'Gemini · LIVE' : batch?.provider_name === 'ollama' ? 'Ollama · LOCAL' : 'Fixture · TEST ONLY';
     $('provenance-banner').textContent = `${reference?.reference_status === 'synthetic_demo' ? 'DEMO / SYNTHETIC REFERENCE DATA. Not a verified real catalogue.' : reference ? 'Order/catalogue reference attested by ' + reference.verified_by + '; source snapshot retained.' : 'Reference context is synthetic and unverified.'} ${batch ? providerLabel : 'No validated visual observations.'} ${telemetry?.model_version || ''} ${telemetry?.latency_ms != null ? '· Measured latency: ' + (telemetry.latency_ms / 1000).toFixed(2) + 's' : ''}. Model observations are not verified facts or business decisions.`;
+    if (collection) $('provenance-banner').textContent = 'REAL COLLECTION PHOTOS · Supplier metadata is unverified; order IDs are synthetic collection labels. ' + (batch ? 'Validated observations available; not independent human labels.' : 'AI inference not available. No visual observations or condition grade were generated.') + ' Human evaluation annotations are not supplied.';
+    if (d.provider_attempt) {
+      const a = d.provider_attempt;
+      $('provenance-banner').textContent += ` Stored attempt provider: ${a.provider} · mode: ${a.mode} · status: ${a.status} · ${a.error_code || 'no recorded failure'}. `
+        + (a.validated_observation_persisted ? 'Observation validated and persisted.' : 'No validated observation persisted.')
+        + (a.model ? ` Model reported: ${a.model}.` : ' Model response metadata unavailable.')
+        + (a.latency_ms != null ? ` Reported/measured provider latency: ${(a.latency_ms / 1000).toFixed(2)}s.` : '')
+        + ' Configuration alone does not establish reachability or inference success.';
+    }
     const expected = el('div'), observed = el('div'), compare = el('div', null, 'comparison');
     expected.append(el('p', 'EXPECTED', 'column-label'), badge(reference?.reference_status === 'synthetic_demo' ? 'DEMO / SYNTHETIC REFERENCE DATA' : reference ? 'Attested order/catalogue context' : 'Synthetic reference context'), datum('SKU', c.order.ordered_sku), datum('ASIN', c.order.ordered_asin));
+    if (collection) {
+      expected.replaceChildren(el('p', 'SUPPLIER CONTEXT · UNVERIFIED', 'column-label'), datum('SKU', c.order.ordered_sku), datum('ASIN', c.order.ordered_asin));
+      const snapshot = JSON.parse(c.source.metadata_snapshot), metadata = snapshot.metadata;
+      for (const key of ['product_name', 'brand', 'model', 'variant']) expected.append(datum(pretty(key), metadata[key]));
+      const notes = el('details'); notes.append(el('summary', 'Supplier statements and source limitations (not AI observations)'), el('pre', JSON.stringify(metadata, null, 2))); expected.append(notes);
+    }
     observed.append(el('p', 'OBSERVED', 'column-label'));
     if (!batch?.identity.length) observed.append(unavailable('Not observed / unavailable'));
     for (const o of batch?.identity || []) {
@@ -169,7 +190,15 @@
   }
   function renderEvidence() {
     const d = state.detail, body = $('evidence-body'), grid = el('div', null, 'evidence-grid');
-    body.replaceChildren(el('p', 'Only configured demo images with matching persisted hashes can be displayed. Demo images are not benchmark data.', 'caption'));
+    body.replaceChildren(el('p', 'Only configured demo or collection images with matching persisted hashes can be displayed. “Genuine” designates real image input, not verified product identity or authenticity. A matching hash establishes file integrity, not product truth.', 'caption'));
+    if (d.capture.source.kind === 'real_product_collection') {
+      const metadata = JSON.parse(d.capture.source.metadata_snapshot).metadata;
+      body.append(datum('Supplier metadata verification', 'UNVERIFIED — supplier-provided context, not a system conclusion'));
+      if (metadata.independent_annotations === 'not_supplied') body.append(datum('Independent human evaluation', 'Not supplied in source metadata. Review assertions are shown separately.'));
+    }
+    body.append(datum('Observation attempt', d.source_key.startsWith('vision:') ? d.source_key + ' · recorded attempt, not proof of successful inference' : 'No observation attempt bound to this review'),
+      datum('AI observations', d.observations ? 'Validated structured observations available; not verified product facts' : 'Not available — no validated observations'),
+      datum('Provider / evidence failure reasons', d.uncertainty.filter(r => r.dimension === 'provider' || r.code === 'observations_unavailable').map(r => r.code).join(' · ') || 'See review reasons'));
     d.evidence.forEach((e,i) => {
       const card = el('article', null, 'evidence-card'); card.id = 'evidence-' + i; card.tabIndex = -1;
       const empty = el('div', null, 'image-unavailable'); empty.append(el('strong', 'IMAGE UNAVAILABLE'), el('span', e.availability === 'fixture_only' ? 'Fixture metadata only' : e.availability === 'available' ? 'Bytes not served by this UI' : 'No inspectable image supplied'));
@@ -179,16 +208,18 @@
         image.addEventListener('error', () => image.replaceWith(unavailable('Image unavailable or no longer matches its recorded hash.')));
         empty.replaceChildren(image);
       }
-      card.append(empty, datum('Evidence ID', e.evidence_id || 'Not assigned'), datum('Reference', e.reference), datum('Availability', e.availability), datum('Type / designation', [e.image_role, e.kind].filter(Boolean).join(' / ') || 'Capture reference · synthetic placeholder'), datum('Source / reason', e.reason || e.source_relationship), datum('SHA-256', e.sha256 || 'Not available'));
+      card.append(empty, datum('Evidence ID', e.evidence_id || 'Not assigned'), datum('Reference', e.reference), datum('Availability', e.availability), datum('Source designation (image input)', [e.image_role, e.kind].filter(Boolean).join(' / ') || 'Capture reference · synthetic placeholder'), datum('Source relationship / availability reason', e.reason || e.source_relationship), datum('SHA-256 (file integrity only)', e.sha256 || 'Not available'));
       const related = [];
       for (const key of ['identity','components','condition']) for (const o of d.observations?.[key] || []) if (o.evidence_refs.includes(e.evidence_id)) related.push(`${key}: ${o.field || o.component || o.feature}`);
       card.append(datum('Observation citations', related.join('; ') || 'None')); grid.append(card);
     });
     body.append(d.evidence.length ? grid : unavailable('No evidence references supplied.'));
     const source = d.capture.source;
-    body.append(datum('Source lineage', `${source.source_name} · row ${source.row_number} · ${source.kind}`), datum('Source SHA-256', source.source_sha256), datum('Observation source', d.source_key));
-    const raw = el('details'); raw.append(el('summary', 'Raw provider response'), el('pre', d.raw_response ? JSON.stringify(d.raw_response, null, 2) : 'No accepted raw provider response available.'));
-    body.append(raw);
+    body.append(datum('Source lineage', `${source.source_name} · ${source.kind === 'real_product_collection' ? 'collection index ' + (source.row_number - 1) : 'row ' + source.row_number} · ${source.kind}`), datum('Source SHA-256', source.source_sha256), datum('Observation source', d.source_key));
+    if (d.raw_response) {
+      const raw = el('details'); raw.append(el('summary', 'Raw provider response (retained)'), el('pre', JSON.stringify(d.raw_response, null, 2)));
+      body.append(raw);
+    } else body.append(unavailable('Raw provider response: not available. No accepted AI response is retained for this review; a recorded attempt does not imply successful inference.'));
     const reference = d.automated_assessment?.decision_reference;
     if (reference) {
       const sourceDetail = el('details'); sourceDetail.append(el('summary', reference.reference_status === 'synthetic_demo' ? 'DEMO / SYNTHETIC reference snapshot and image hash' : 'Order/catalogue attestation and source snapshot'),
@@ -253,7 +284,11 @@
       for (const option of select.options) if (['PASS','FAIL'].includes(option.value)) option.disabled = !hasEvidence;
     }
     $('citation-options').hidden = !permitted || !hasEvidence;
-    $('assertion-guidance').textContent = !permitted ? 'Start an active review before recording human assertions.' : hasEvidence ? 'Decisive assertions require selected citations. Fixture evidence remains fixture-only.' : 'No usable evidence citations. Only UNCERTAIN assertions are available.';
+    $('assertion-guidance').textContent = !permitted
+      ? state.detail.status === 'in_review'
+        ? 'Assertions cannot accompany a return to pending review. Choose Save review or Mark reviewed to record assertions.'
+        : 'Start or reopen the review first: enter a reason and save this action, then reopen Review actions. Identity and completeness assertions become available after the review is active.'
+      : hasEvidence ? 'Decisive assertions require selected citations. Fixture evidence remains fixture-only.' : 'No usable evidence citations. Only UNCERTAIN assertions are available.';
   }
   function openReview() {
     if (!state.detail || !state.context) return;
@@ -311,9 +346,11 @@
       const [context] = await Promise.all([api('/api/context'), api('/health')]);
       state.context = context;
       if (context.demo_case) notice('DEMO / SYNTHETIC REFERENCE DATA · ' + context.demo_case + ' · not customer data or benchmark ground truth.');
+      if (context.collection_enabled) notice('Local real-product collection · AI disabled unless separately configured. Supplier statements are not independent evaluation labels.');
       $('organization').textContent = context.organization_id + (context.client_id === null ? ' · Client not supplied' : ' · ' + context.client_id);
       $('reviewer').textContent = 'Reviewer: ' + context.reviewer_id;
       $('ai-provider').textContent = 'AI provider: ' + (context.ai_provider === 'gemini' ? 'Gemini · LIVE' : context.ai_provider === 'ollama' ? 'Ollama · LOCAL' : context.ai_provider === 'fixture' ? 'Fixture · TEST ONLY' : 'disabled');
+      if (context.configured_model) $('ai-provider').textContent += ` · Model configured: ${context.configured_model} · reachability/inference not established by configuration`;
       $('run-demo').disabled = !context.demo_enabled;
       $('system-status').textContent = 'Connected · local adapter';
     } catch (err) { $('system-status').textContent = 'Connection unavailable'; notice('Could not establish trusted server context. Use Refresh to retry. ' + err.message, true); }

@@ -1,0 +1,57 @@
+{
+  "schema_version": "independent-annotations-1",
+  "evaluation_set_id": "SYNTHETIC TEST FIXTURE",
+  "dataset_version": "TEST-1",
+  "kind": "synthetic_test_fixture",
+  "tenant": {"organization_id": "org_demo_alpha", "client_id": null},
+  "annotators": ["TEST-A", "TEST-B"],
+  "cases": [
+    {
+      "product_id": "SYNTHETIC-CASE-001",
+      "reference": {"title": "SYNTHETIC TEST FIXTURE", "brand": null, "model": "UNKNOWN", "variant": null,
+        "sku": "UNKNOWN", "asin": "UNKNOWN", "expected_components": [], "images": []},
+      "binding": {"record_id": "TEST-evaluation-001", "unit_id": "TEST-evaluation-unit-001", "attempt_id": 1},
+      "provenance": {"source_name": "SYNTHETIC TEST FIXTURE", "notes": "Fixture provider; no image or model inference"},
+      "annotations": [
+        {"product_id": "SYNTHETIC-CASE-001", "annotator_id": "TEST-A", "identity_label": "yes",
+          "completeness_label": "yes", "condition_label": "good", "schema_version": "independent-annotations-1",
+          "notes": "SYNTHETIC TEST FIXTURE", "captured_at": null},
+        {"product_id": "SYNTHETIC-CASE-001", "annotator_id": "TEST-B", "identity_label": "no",
+          "completeness_label": "yes", "condition_label": "acceptable", "schema_version": "independent-annotations-1",
+          "notes": "SYNTHETIC TEST FIXTURE", "captured_at": null}
+      ]
+    },
+    {
+      "product_id": "SYNTHETIC-CASE-002",
+      "reference": {"title": "SYNTHETIC TEST FIXTURE", "brand": null, "model": "UNKNOWN", "variant": null,
+        "sku": "UNKNOWN", "asin": "UNKNOWN", "expected_components": [{"name": "TEST-cable", "quantity": null}], "images": []},
+      "binding": {"record_id": "TEST-evaluation-002", "unit_id": "TEST-evaluation-unit-002", "attempt_id": 2},
+      "provenance": {"source_name": "SYNTHETIC TEST FIXTURE", "notes": "Malformed fixture provider response; explicit unavailable"},
+      "annotations": [
+        {"product_id": "SYNTHETIC-CASE-002", "annotator_id": "TEST-A", "identity_label": "not_sure",
+          "completeness_label": "not_sure", "condition_label": "not_sure", "schema_version": "independent-annotations-1"},
+        {"product_id": "SYNTHETIC-CASE-002", "annotator_id": "TEST-B", "identity_label": "not_sure",
+          "completeness_label": "not_sure", "condition_label": "not_sure", "schema_version": "independent-annotations-1"}
+      ]
+    },
+    {
+      "product_id": "SYNTHETIC-CASE-003",
+      "reference": {"title": "SYNTHETIC TEST FIXTURE", "brand": null, "model": "UNKNOWN", "variant": null,
+        "sku": "UNKNOWN", "asin": "UNKNOWN", "expected_components": [], "images": []},
+      "binding": {"record_id": "TEST-evaluation-003", "unit_id": "TEST-evaluation-unit-003", "attempt_id": null},
+      "provenance": {"source_name": "SYNTHETIC TEST FIXTURE", "notes": "Phase 1 assessment only; provider availability unknown"},
+      "annotations": [
+        {"product_id": "SYNTHETIC-CASE-003", "annotator_id": "TEST-A", "identity_label": "not_sure",
+          "completeness_label": "not_sure", "condition_label": "not_sure", "schema_version": "independent-annotations-1"}
+      ]
+    },
+    {
+      "product_id": "SYNTHETIC-CASE-004",
+      "reference": {"title": "SYNTHETIC TEST FIXTURE", "brand": null, "model": "UNKNOWN", "variant": null,
+        "sku": "UNKNOWN", "asin": "UNKNOWN", "expected_components": [], "images": []},
+      "binding": null,
+      "provenance": {"source_name": "SYNTHETIC TEST FIXTURE", "notes": "Missing system binding and missing annotations"},
+      "annotations": []
+    }
+  ]
+}

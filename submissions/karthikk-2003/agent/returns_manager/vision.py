@@ -175,6 +175,12 @@ def observe(capture: Capture, inputs: tuple[ImageInput, ...], provider: VisionPr
     except ValidationError:
         # Reject the complete payload, not a best-effort partial interpretation.
         # Do not persist potentially foreign/invalid raw content under this capture.
+        diagnostic = getattr(provider, 'diagnose_validation_failure', None)
+        if callable(diagnostic):
+            try:
+                diagnostic(capture, request.images, raw)
+            except Exception:
+                pass  # Diagnostics must never alter rejection or persistence behavior.
         return failure("invalid_response")
     return VisionRun(scope, request.images, provider.name, provider.mode, "validated", None, raw, batch)
 
